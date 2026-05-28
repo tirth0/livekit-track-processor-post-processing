@@ -61,7 +61,7 @@ export default class BackgroundProcessor extends VideoTransformer<BackgroundOpti
 
     const fileSet = await vision.FilesetResolver.forVisionTasks(
       this.options.assetPaths?.tasksVisionFileSet ??
-        `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${dependencies['@mediapipe/tasks-vision']}/wasm`,
+      `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${dependencies['@mediapipe/tasks-vision']}/wasm`,
     );
 
     this.imageSegmenter = await vision.ImageSegmenter.createFromOptions(fileSet, {
@@ -77,6 +77,7 @@ export default class BackgroundProcessor extends VideoTransformer<BackgroundOpti
       outputCategoryMask: true,
       outputConfidenceMasks: false,
     });
+
 
     // Skip loading the image here if update already loaded the image below
     if (this.options?.imagePath) {

@@ -4,6 +4,21 @@
     <title>LiveKit track processor sample</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <script>
+      window.appActions = new Proxy(
+        {},
+        {
+          get:
+            (target, prop) =>
+            (...args) => {
+              if (typeof target[prop] === 'function') {
+                return target[prop](...args);
+              }
+              console.warn(`appActions.${String(prop)} is not ready yet`);
+            },
+        },
+      );
+    </script>
 
     <link
       rel="stylesheet"
@@ -24,13 +39,24 @@
               <b>LiveKit URL</b>
             </div>
             <div>
-              <input type="text" class="form-control" id="url" value="ws://localhost:7880" />
+              <input
+                type="text"
+                class="form-control"
+                id="url"
+                value="wss://test-virtual-bg-pbc4e9f6.livekit.cloud"
+              />
             </div>
             <div>
               <b>Token</b>
             </div>
             <div>
-              <input type="text" class="form-control" id="token" />
+              <input
+                type="text"
+                class="form-control"
+                id="token"
+                value="Generated automatically by the sandbox token server"
+                disabled
+              />
             </div>
           </div>
 
@@ -41,7 +67,7 @@
                 id="connect-button"
                 class="btn btn-primary mt-1"
                 type="button"
-                onclick="appActions.connectWithFormInput()"
+                onclick="window.appActions.connectWithFormInput()"
               >
                 Connect
               </button>
@@ -52,7 +78,7 @@
                 class="btn btn-secondary mt-1"
                 disabled
                 type="button"
-                onclick="appActions.toggleAudio()"
+                onclick="window.appActions.toggleAudio()"
               >
                 Enable Mic
               </button>
@@ -61,7 +87,7 @@
                 class="btn btn-secondary mt-1"
                 disabled
                 type="button"
-                onclick="appActions.toggleVideo()"
+                onclick="window.appActions.toggleVideo()"
               >
                 Enable Camera
               </button>
@@ -70,7 +96,7 @@
                 id="flip-video-button"
                 class="btn btn-secondary mt-1"
                 type="button"
-                onclick="appActions.flipVideo()"
+                onclick="window.appActions.flipVideo()"
               >
                 Flip Video
               </button>
@@ -80,7 +106,7 @@
                 class="btn btn-danger mt-1"
                 disabled
                 type="button"
-                onclick="appActions.disconnectRoom()"
+                onclick="window.appActions.disconnectRoom()"
               >
                 Disconnect
               </button>
@@ -90,7 +116,7 @@
                 class="btn btn-secondary mt-1"
                 disabled
                 type="button"
-                onclick="appActions.startAudio()"
+                onclick="window.appActions.startAudio()"
               >
                 Start Audio
               </button>
@@ -102,10 +128,23 @@
                     class="btn btn-secondary mr-2"
                     disabled
                     type="button"
-                    onclick="appActions.toggleTrackProcessorEnabled()"
+                    onclick="window.appActions.toggleTrackProcessorEnabled()"
                   >
                     Insert Track Processor
                   </button>
+
+                  <div class="mr-2">
+                    <span class="text-secondary">Processor:</span>
+                    <select
+                      class="custom-select"
+                      id="processor-type-select"
+                      style="width: 180px;"
+                      onchange="window.appActions.switchBackgroundProcessorType(this.value)"
+                    >
+                      <option value="standard">Standard</option>
+                      <option value="jbf" selected>JBF</option>
+                    </select>
+                  </div>
 
                   <div id="initial-mode-wrapper" style="display: none;">
                     <span class="text-secondary">Initial mode:</span>
@@ -124,7 +163,7 @@
                       class="btn btn-secondary"
                       disabled
                       type="button"
-                      onclick="appActions.switchBackgroundMode('disabled')"
+                      onclick="window.appActions.switchBackgroundMode('disabled')"
                     >
                       Disabled
                     </button>
@@ -133,7 +172,7 @@
                       class="btn btn-secondary"
                       disabled
                       type="button"
-                      onclick="appActions.switchBackgroundMode('background-blur')"
+                      onclick="window.appActions.switchBackgroundMode('background-blur')"
                     >
                       Blur
                     </button>
@@ -142,7 +181,7 @@
                       class="btn btn-secondary"
                       disabled
                       type="button"
-                      onclick="appActions.switchBackgroundMode('virtual-background')"
+                      onclick="window.appActions.switchBackgroundMode('virtual-background')"
                     >
                       Virtual background
                     </button>
@@ -153,10 +192,221 @@
                     class="btn btn-secondary mt-1"
                     disabled
                     type="button"
-                    onclick="appActions.updateVirtualBackgroundImage('/ali-kazal-tbw_KQE3Cbg-unsplash.jpg')"
+                    onclick="window.appActions.updateVirtualBackgroundImage('/ali-kazal-tbw_KQE3Cbg-unsplash.jpg')"
                   >
                     Update Background Image
                   </button>
+                </div>
+
+                <div id="jbf-processor-controls" class="post-processing-card mt-2" style="display: none;">
+                  <h5>Post-processing</h5>
+
+                  <div class="post-processing-section">Mask refinement</div>
+                  <div class="post-processing-control">
+                    <label for="jbf-dilation-enabled">Dilation</label>
+                    <label class="post-processing-checkbox">
+                      <input
+                        type="checkbox"
+                        id="jbf-dilation-enabled"
+                        onchange="window.appActions.updateJBFProcessorOptions()"
+                      />
+                      Enabled
+                    </label>
+                  </div>
+                  <div class="post-processing-control">
+                    <label for="jbf-dilation-strength">Dilation strength</label>
+                    <div class="slider-with-value">
+                      <input
+                        type="range"
+                        id="jbf-dilation-strength"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value="0.7"
+                        oninput="window.appActions.updateJBFProcessorOptions()"
+                      />
+                      <span id="jbf-dilation-strength-value" class="slider-value">0.70</span>
+                    </div>
+                  </div>
+
+                  <div class="post-processing-section">Joint bilateral filter</div>
+                  <div class="post-processing-control">
+                    <label for="jbf-enabled">Joint bilateral filter</label>
+                    <label class="post-processing-checkbox">
+                      <input
+                        type="checkbox"
+                        id="jbf-enabled"
+                        checked
+                        onchange="window.appActions.updateJBFProcessorOptions()"
+                      />
+                      Enabled
+                    </label>
+                  </div>
+                  <div class="post-processing-control">
+                    <label for="jbf-sigma-space">Sigma space</label>
+                    <div class="slider-with-value">
+                      <input
+                        type="range"
+                        id="jbf-sigma-space"
+                        min="0"
+                        max="10"
+                        step="0.1"
+                        value="1"
+                        oninput="window.appActions.updateJBFProcessorOptions()"
+                      />
+                      <span id="jbf-sigma-space-value" class="slider-value">1.0</span>
+                    </div>
+                  </div>
+                  <div class="post-processing-control">
+                    <label for="jbf-sigma-color">Sigma color</label>
+                    <div class="slider-with-value">
+                      <input
+                        type="range"
+                        id="jbf-sigma-color"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value="0.1"
+                        oninput="window.appActions.updateJBFProcessorOptions()"
+                      />
+                      <span id="jbf-sigma-color-value" class="slider-value">0.10</span>
+                    </div>
+                  </div>
+
+                  <div class="post-processing-section">Temporal stability</div>
+                  <div class="post-processing-control">
+                    <label for="jbf-temporal-mode">Mode</label>
+                    <select
+                      class="custom-select"
+                      id="jbf-temporal-mode"
+                      onchange="window.appActions.updateJBFProcessorOptions()"
+                    >
+                      <option value="off">Off</option>
+                      <option value="temporal" selected>Temporal EMA</option>
+                      <option value="hysteresis">Hysteresis</option>
+                    </select>
+                  </div>
+                  <div class="post-processing-control">
+                    <label for="jbf-temporal-alpha">Temporal alpha</label>
+                    <div class="slider-with-value">
+                      <input
+                        type="range"
+                        id="jbf-temporal-alpha"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value="0.5"
+                        oninput="window.appActions.updateJBFProcessorOptions()"
+                      />
+                      <span id="jbf-temporal-alpha-value" class="slider-value">0.50</span>
+                    </div>
+                  </div>
+                  <div class="post-processing-control">
+                    <label for="jbf-hysteresis-enter">Hysteresis enter</label>
+                    <div class="slider-with-value">
+                      <input
+                        type="range"
+                        id="jbf-hysteresis-enter"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value="0.45"
+                        oninput="window.appActions.updateJBFProcessorOptions()"
+                      />
+                      <span id="jbf-hysteresis-enter-value" class="slider-value">0.45</span>
+                    </div>
+                  </div>
+                  <div class="post-processing-control">
+                    <label for="jbf-hysteresis-exit">Hysteresis exit</label>
+                    <div class="slider-with-value">
+                      <input
+                        type="range"
+                        id="jbf-hysteresis-exit"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value="0.25"
+                        oninput="window.appActions.updateJBFProcessorOptions()"
+                      />
+                      <span id="jbf-hysteresis-exit-value" class="slider-value">0.25</span>
+                    </div>
+                  </div>
+
+                  <div class="post-processing-section">Debug output</div>
+                  <div class="post-processing-control">
+                    <label for="jbf-debug-output">Render stage</label>
+                    <select
+                      class="custom-select"
+                      id="jbf-debug-output"
+                      onchange="window.appActions.updateJBFProcessorOptions()"
+                    >
+                      <option value="none" selected>Final composite</option>
+                      <option value="raw-mask">Raw mask</option>
+                      <option value="dilated-mask">Dilated mask</option>
+                      <option value="jbf-mask">JBF mask</option>
+                      <option value="temporal-mask">Temporal mask</option>
+                      <option value="coverage-mask">Coverage mask</option>
+                    </select>
+                  </div>
+
+                  <div class="post-processing-section">Background</div>
+                  <div class="post-processing-control">
+                    <label>Coverage</label>
+                    <div class="coverage-control">
+                      <div class="coverage-range">
+                        <div class="coverage-track">
+                          <span id="jbf-coverage-fill"></span>
+                        </div>
+                        <input
+                          type="range"
+                          id="jbf-coverage-min"
+                          min="0"
+                          max="1"
+                          step="0.01"
+                          value="0.68"
+                          oninput="window.appActions.updateJBFProcessorOptions()"
+                        />
+                        <input
+                          type="range"
+                          id="jbf-coverage-max"
+                          min="0"
+                          max="1"
+                          step="0.01"
+                          value="0.83"
+                          oninput="window.appActions.updateJBFProcessorOptions()"
+                        />
+                      </div>
+                      <span class="slider-value">
+                        <span id="jbf-coverage-min-value">0.68</span>
+                        -
+                        <span id="jbf-coverage-max-value">0.83</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div class="post-processing-control">
+                    <label for="jbf-light-wrapping">Light wrapping</label>
+                    <div class="light-wrap-row">
+                      <select
+                        class="custom-select"
+                        id="jbf-blend-mode"
+                        oninput="window.appActions.updateJBFProcessorOptions()"
+                      >
+                        <option value="screen" selected>Screen</option>
+                        <option value="linearDodge">Linear Dodge</option>
+                      </select>
+                      <input
+                        type="range"
+                        id="jbf-light-wrapping"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value="0.3"
+                        oninput="window.appActions.updateJBFProcessorOptions()"
+                      />
+                      <span id="jbf-light-wrapping-value" class="slider-value">0.30</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -167,7 +417,7 @@
                     class="btn btn-secondary mr-2"
                     disabled
                     type="button"
-                    onclick="appActions.toggleAudioProcessorEnabled()"
+                    onclick="window.appActions.toggleAudioProcessorEnabled()"
                   >
                     Insert Audio Processor
                   </button>
@@ -184,7 +434,7 @@
                       value="1"
                       step="0.1"
                       style="flex: 1;"
-                      oninput="appActions.updateGain(parseFloat(this.value))"
+                      oninput="window.appActions.updateGain(parseFloat(this.value))"
                     />
                     <span id="gain-value" class="ml-2" style="min-width: 40px;">1.0</span>
                   </div>
@@ -198,7 +448,7 @@
               <select
                 id="video-input"
                 class="custom-select"
-                onchange="appActions.handleDeviceSelected(event)"
+                onchange="window.appActions.handleDeviceSelected(event)"
               >
                 <option selected>Video Input (default)</option>
               </select>
@@ -207,7 +457,7 @@
               <select
                 id="audio-input"
                 class="custom-select"
-                onchange="appActions.handleDeviceSelected(event)"
+                onchange="window.appActions.handleDeviceSelected(event)"
               >
                 <option selected>Audio Input (default)</option>
               </select>
@@ -216,21 +466,10 @@
               <select
                 id="audio-output"
                 class="custom-select"
-                onchange="appActions.handleDeviceSelected(event)"
+                onchange="window.appActions.handleDeviceSelected(event)"
               >
                 <option selected>Audio Output (default)</option>
               </select>
-            </div>
-            <div>
-              <input
-                type="range"
-                id="step-width"
-                min="0"
-                max="10"
-                value="1"
-                step="0.1"
-                onchange="appActions.setStepWidth(event)"
-              />
             </div>
           </div>
         </div>
@@ -243,7 +482,5 @@
       </div>
     </div>
     <script src="./sample.ts" type="module"></script>
-    <!-- for icons -->
-    <script defer src="https://kit.fontawesome.com/7c1c4c7e9c.js" crossorigin="anonymous"></script>
   </body>
 </html>

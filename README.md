@@ -21,6 +21,28 @@ await videoTrack.setProcessor(processor);
 
 Available modes: `background-blur`, `virtual-background`, and `disabled` (passthrough).
 
+For higher-quality post-segmentation processing, use `AdvancedBackgroundProcessor`. It keeps the same blur/image/disabled modes, but refines the segmentation mask at a lower resolution before compositing at full resolution:
+
+```ts
+import { AdvancedBackgroundProcessor } from '@livekit/track-processors';
+
+const processor = AdvancedBackgroundProcessor({
+  mode: 'virtual-background',
+  imagePath: '/backgrounds/office.jpg',
+  qualityProfile: 'auto',
+  postProcessing: {
+    maskResolution: { width: 320, height: 180 },
+    temporalSmoothing: 0.6,
+  },
+  onFrameProcessed: (stats) => {
+    console.log(stats.renderTimeMs, stats.maskProcessingTimeMs, stats.qualityProfile);
+  },
+});
+
+await videoTrack.setProcessor(processor);
+await processor.switchTo({ mode: 'background-blur', blurRadius: 10 });
+```
+
 See [processor-docs/video-processors.md](processor-docs/video-processors.md) for full usage, browser support checks, and how to avoid visual artifacts when switching modes.
 
 ## Audio processors

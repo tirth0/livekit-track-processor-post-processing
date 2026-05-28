@@ -2,6 +2,7 @@ module.exports = {
   root: true,
   extends: ['plugin:import/recommended', 'airbnb-typescript/base', 'prettier'],
   parserOptions: {
+    tsconfigRootDir: __dirname,
     project: './tsconfig.eslint.json',
   },
   rules: {

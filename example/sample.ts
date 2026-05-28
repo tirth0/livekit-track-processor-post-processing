@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 import {
   ConnectionQuality,
   ConnectionState,
@@ -17,6 +19,7 @@ import {
   RoomOptions,
   Track,
   TrackPublication,
+  TokenSource,
   VideoCaptureOptions,
   VideoPresets,
   VideoPresets43,
@@ -24,18 +27,135 @@ import {
   facingModeFromLocalTrack,
   setLogLevel,
 } from 'livekit-client';
-import { BackgroundProcessor, BackgroundProcessorOptions, GainAudioProcessor } from '../src';
+import {
+  AdvancedBackgroundProcessor,
+  AdvancedBackgroundProcessorOptions,
+  BackgroundProcessor,
+  BackgroundProcessorOptions,
+  GainAudioProcessor,
+  JBFBackgroundProcessor,
+  JBFBackgroundProcessorOptions,
+  JBFBackgroundTransformerOptions,
+} from '../src';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 const BLUR_RADIUS = 10;
-const IMAGE_PATH = '/samantha-gades-BlIhVfXbi9s-unsplash.jpg';
+const resolveSampleAssetPath = (path: string) => {
+  if (/^(https?:)?\/\//.test(path) || path.startsWith('data:')) {
+    return path;
+  }
+
+  return `${import.meta.env.BASE_URL}${path.replace(/^\//, '')}`;
+};
+const IMAGE_PATH = resolveSampleAssetPath('samantha-gades-BlIhVfXbi9s-unsplash.jpg');
+type BackgroundProcessorType = 'standard' | 'advanced' | 'jbf';
+type BackgroundProcessorMode = NonNullable<BackgroundProcessorOptions['mode']>;
+
+const createStandardBackgroundProcessor = () =>
+  BackgroundProcessor({ mode: 'background-blur', blurRadius: BLUR_RADIUS });
+
+const createAdvancedBackgroundProcessor = () =>
+  AdvancedBackgroundProcessor({
+    mode: 'background-blur',
+    blurRadius: BLUR_RADIUS,
+    qualityProfile: 'auto',
+    onFrameProcessed: (stats) => {
+      window.lastBackgroundProcessorStats = stats;
+    },
+  });
+
+const updateSliderValue = (id: string, value: number, digits = 2) => {
+  const valueElement = document.getElementById(`${id}-value`);
+  if (valueElement) {
+    valueElement.textContent = value.toFixed(digits);
+  }
+};
+
+const getJBFOptionsFromInputs = (): Pick<
+  JBFBackgroundTransformerOptions,
+  | 'coverage'
+  | 'lightWrapping'
+  | 'blendMode'
+  | 'sigmaSpace'
+  | 'sigmaColor'
+  | 'jointBilateralFilterEnabled'
+  | 'dilationEnabled'
+  | 'dilationStrength'
+  | 'temporalMode'
+  | 'temporalAlpha'
+  | 'hysteresisEnterThreshold'
+  | 'hysteresisExitThreshold'
+  | 'debugOutput'
+> => {
+  const coverageMinInput = $<HTMLInputElement>('jbf-coverage-min');
+  const coverageMaxInput = $<HTMLInputElement>('jbf-coverage-max');
+  const coverageMin = Math.min(Number(coverageMinInput.value), Number(coverageMaxInput.value));
+  const coverageMax = Math.max(Number(coverageMinInput.value), Number(coverageMaxInput.value));
+  coverageMinInput.value = String(coverageMin);
+  coverageMaxInput.value = String(coverageMax);
+  const coverageFill = $('jbf-coverage-fill');
+  coverageFill.style.left = `${coverageMin * 100}%`;
+  coverageFill.style.right = `${(1 - coverageMax) * 100}%`;
+  updateSliderValue('jbf-coverage-min', coverageMin);
+  updateSliderValue('jbf-coverage-max', coverageMax);
+
+  const dilationStrength = Number($<HTMLInputElement>('jbf-dilation-strength').value);
+  const sigmaSpace = Number($<HTMLInputElement>('jbf-sigma-space').value);
+  const sigmaColor = Number($<HTMLInputElement>('jbf-sigma-color').value);
+  const temporalAlpha = Number($<HTMLInputElement>('jbf-temporal-alpha').value);
+  const hysteresisEnterThreshold = Number($<HTMLInputElement>('jbf-hysteresis-enter').value);
+  const hysteresisExitThreshold = Number($<HTMLInputElement>('jbf-hysteresis-exit').value);
+  const lightWrapping = Number($<HTMLInputElement>('jbf-light-wrapping').value);
+  const jointBilateralFilterEnabled = $<HTMLInputElement>('jbf-enabled').checked;
+
+  updateSliderValue('jbf-dilation-strength', dilationStrength);
+  updateSliderValue('jbf-sigma-space', sigmaSpace, 1);
+  updateSliderValue('jbf-sigma-color', sigmaColor);
+  updateSliderValue('jbf-temporal-alpha', temporalAlpha);
+  updateSliderValue('jbf-hysteresis-enter', hysteresisEnterThreshold);
+  updateSliderValue('jbf-hysteresis-exit', hysteresisExitThreshold);
+  updateSliderValue('jbf-light-wrapping', lightWrapping);
+  $<HTMLInputElement>('jbf-sigma-space').disabled = !jointBilateralFilterEnabled;
+  $<HTMLInputElement>('jbf-sigma-color').disabled = !jointBilateralFilterEnabled;
+
+  return {
+    coverage: [coverageMin, coverageMax],
+    lightWrapping,
+    blendMode: $<HTMLSelectElement>('jbf-blend-mode').value as JBFBackgroundTransformerOptions['blendMode'],
+    sigmaSpace,
+    sigmaColor,
+    jointBilateralFilterEnabled,
+    dilationEnabled: $<HTMLInputElement>('jbf-dilation-enabled').checked,
+    dilationStrength,
+    temporalMode: $<HTMLSelectElement>('jbf-temporal-mode')
+      .value as JBFBackgroundTransformerOptions['temporalMode'],
+    temporalAlpha,
+    hysteresisEnterThreshold,
+    hysteresisExitThreshold,
+    debugOutput: $<HTMLSelectElement>('jbf-debug-output')
+      .value as JBFBackgroundTransformerOptions['debugOutput'],
+  };
+};
+
+const createJBFBackgroundProcessor = () =>
+  JBFBackgroundProcessor({
+    mode: 'background-blur',
+    blurRadius: BLUR_RADIUS,
+    ...getJBFOptionsFromInputs(),
+    onFrameProcessed: (stats) => {
+      window.lastBackgroundProcessorStats = stats;
+    },
+  });
 
 const state = {
   defaultDevices: new Map<MediaDeviceKind, string>(),
   bitrateInterval: undefined as any,
   isBackgroundProcessorEnabled: false,
-  backgroundProcessor: BackgroundProcessor({ mode: 'background-blur', blurRadius: BLUR_RADIUS }),
+  selectedBackgroundProcessorType: 'jbf' as BackgroundProcessorType,
+  standardBackgroundProcessor: undefined as ReturnType<typeof createStandardBackgroundProcessor> | undefined,
+  advancedBackgroundProcessor: undefined as ReturnType<typeof createAdvancedBackgroundProcessor> | undefined,
+  jbfBackgroundProcessor: undefined as ReturnType<typeof createJBFBackgroundProcessor> | undefined,
   isAudioProcessorEnabled: false,
   gainProcessor: new GainAudioProcessor({ gainValue: 1.0 }),
 };
@@ -43,25 +163,72 @@ let currentRoom: Room | undefined;
 
 let startTime: number;
 
-const searchParams = new URLSearchParams(window.location.search);
-const storedUrl = searchParams.get('url') ?? 'ws://localhost:7880';
-const storedToken = searchParams.get('token') ?? '';
-$<HTMLInputElement>('url').value = storedUrl;
-$<HTMLInputElement>('token').value = storedToken;
+const SANDBOX_TOKEN_SERVER_ID = 'testvirtualbg-2ef785';
+const SANDBOX_LIVEKIT_URL = 'wss://test-virtual-bg-pbc4e9f6.livekit.cloud';
+const SANDBOX_ROOM_NAME = 'track-processors-sandbox';
 
-function updateSearchParams(url: string, token: string) {
-  const params = new URLSearchParams({ url, token });
+const searchParams = new URLSearchParams(window.location.search);
+const storedUrl = searchParams.get('url') ?? SANDBOX_LIVEKIT_URL;
+$<HTMLInputElement>('url').value = storedUrl;
+$<HTMLInputElement>('token').value = 'Generated automatically by the sandbox token server';
+
+function updateSearchParams(url: string) {
+  const params = new URLSearchParams({ url });
   window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
+}
+
+function getActiveBackgroundProcessor() {
+  if (state.selectedBackgroundProcessorType === 'advanced') {
+    state.advancedBackgroundProcessor ??= createAdvancedBackgroundProcessor();
+    return state.advancedBackgroundProcessor;
+  }
+
+  if (state.selectedBackgroundProcessorType === 'jbf') {
+    state.jbfBackgroundProcessor ??= createJBFBackgroundProcessor();
+    return state.jbfBackgroundProcessor;
+  }
+
+  state.standardBackgroundProcessor ??= createStandardBackgroundProcessor();
+  return state.standardBackgroundProcessor;
+}
+
+async function applyJBFProcessorOptions() {
+  if (!state.jbfBackgroundProcessor) {
+    return;
+  }
+
+  await state.jbfBackgroundProcessor.updateTransformerOptions(getJBFOptionsFromInputs());
+}
+
+async function switchProcessorToMode(mode: BackgroundProcessorMode) {
+  const processor = getActiveBackgroundProcessor();
+
+  switch (mode) {
+    case 'disabled':
+      await processor.switchTo({ mode: 'disabled' });
+      break;
+    case 'virtual-background':
+      await processor.switchTo({ mode: 'virtual-background', imagePath: IMAGE_PATH });
+      break;
+    case 'background-blur':
+      await processor.switchTo({ mode: 'background-blur', blurRadius: BLUR_RADIUS });
+      break;
+  }
+}
+
+async function getCameraTrack() {
+  return currentRoom?.localParticipant.getTrackPublication(Track.Source.Camera)?.track as
+    | LocalVideoTrack
+    | undefined;
 }
 
 // handles actions from the HTML
 const appActions = {
   connectWithFormInput: async () => {
     const url = (<HTMLInputElement>$('url')).value;
-    const token = (<HTMLInputElement>$('token')).value;
 
     setLogLevel(LogLevel.debug);
-    updateSearchParams(url, token);
+    updateSearchParams(url);
 
     const roomOpts: RoomOptions = {
       adaptiveStream: true,
@@ -78,7 +245,13 @@ const appActions = {
     const connectOpts: RoomConnectOptions = {
       autoSubscribe: true,
     };
-    await appActions.connectToRoom(url, token, roomOpts, connectOpts, true);
+
+    const tokenSource = TokenSource.sandboxTokenServer(SANDBOX_TOKEN_SERVER_ID);
+    const { serverUrl, participantToken } = await tokenSource.fetch({
+      roomName: SANDBOX_ROOM_NAME,
+    });
+
+    await appActions.connectToRoom(serverUrl || url || SANDBOX_LIVEKIT_URL, participantToken, roomOpts, connectOpts, true);
 
     state.bitrateInterval = setInterval(renderBitrate, 1000);
   },
@@ -250,8 +423,11 @@ const appActions = {
     setButtonDisabled('toggle-track-processor', true);
 
     try {
-      const camTrack = currentRoom.localParticipant.getTrackPublication(Track.Source.Camera)!
-        .track as LocalVideoTrack;
+      const camTrack = await getCameraTrack();
+      if (!camTrack) {
+        appendLog('ERROR: No camera track found. Enable video first.');
+        return;
+      }
 
       if (state.isBackgroundProcessorEnabled) {
         await camTrack.stopProcessor();
@@ -259,22 +435,12 @@ const appActions = {
         $("initial-mode-wrapper").style.display = 'block';
       } else {
         $("initial-mode-wrapper").style.display = 'none';
-        const initialMode = $<HTMLSelectElement>("initial-mode-select").value as BackgroundProcessorOptions['mode'];
-
-        switch (initialMode) {
-          case 'disabled':
-            await state.backgroundProcessor.switchTo({ mode: 'disabled' });
-            break;
-          case 'virtual-background':
-            await state.backgroundProcessor.switchTo({ mode: 'virtual-background', imagePath: IMAGE_PATH });
-            break;
-          case 'background-blur':
-            await state.backgroundProcessor.switchTo({ mode: 'background-blur' });
-            break;
-        }
+        const initialMode = $<HTMLSelectElement>("initial-mode-select").value as BackgroundProcessorMode;
+        await switchProcessorToMode(initialMode);
+        await applyJBFProcessorOptions();
 
         state.isBackgroundProcessorEnabled = true;
-        await camTrack.setProcessor(state.backgroundProcessor);
+        await camTrack.setProcessor(getActiveBackgroundProcessor());
       }
     } catch (e: any) {
       appendLog(`ERROR: ${e.message}`);
@@ -285,30 +451,23 @@ const appActions = {
     }
   },
 
-  switchBackgroundMode: async (newMode: NonNullable<BackgroundProcessorOptions['mode']>) => {
+  switchBackgroundMode: async (newMode: BackgroundProcessorMode) => {
     if (!currentRoom) return;
 
     const controlButtonId = `switch-to-${newMode}-button`;
     setButtonDisabled(controlButtonId, true);
 
     try {
-      const camTrack = currentRoom.localParticipant.getTrackPublication(Track.Source.Camera)!
-        .track as LocalVideoTrack;
-
-      switch (newMode) {
-        case 'disabled':
-          await state.backgroundProcessor.switchTo({ mode: 'disabled' });
-          break;
-        case 'virtual-background':
-          await state.backgroundProcessor.switchTo({ mode: 'virtual-background', imagePath: IMAGE_PATH });
-          break;
-        case 'background-blur':
-          await state.backgroundProcessor.switchTo({ mode: 'background-blur' });
-          break;
+      const camTrack = await getCameraTrack();
+      if (!camTrack) {
+        appendLog('ERROR: No camera track found. Enable video first.');
+        return;
       }
+      await switchProcessorToMode(newMode);
+      await applyJBFProcessorOptions();
 
       if (!state.isBackgroundProcessorEnabled) {
-        await camTrack.setProcessor(state.backgroundProcessor);
+        await camTrack.setProcessor(getActiveBackgroundProcessor());
         state.isBackgroundProcessorEnabled = true;
       }
     } catch (e: any) {
@@ -325,12 +484,19 @@ const appActions = {
     if (!currentRoom) return;
 
     try {
-      const camTrack = currentRoom.localParticipant.getTrackPublication(Track.Source.Camera)!
-        .track as LocalVideoTrack;
-      await state.backgroundProcessor.switchTo({ mode: 'virtual-background', imagePath });
+      const camTrack = await getCameraTrack();
+      if (!camTrack) {
+        appendLog('ERROR: No camera track found. Enable video first.');
+        return;
+      }
+      await getActiveBackgroundProcessor().switchTo({
+        mode: 'virtual-background',
+        imagePath: resolveSampleAssetPath(imagePath),
+      });
+      await applyJBFProcessorOptions();
       if (!state.isBackgroundProcessorEnabled) {
         await camTrack.stopProcessor();
-        await camTrack.setProcessor(state.backgroundProcessor);
+        await camTrack.setProcessor(getActiveBackgroundProcessor());
       }
     } catch (e: any) {
       appendLog(`ERROR: ${e.message}`);
@@ -338,6 +504,39 @@ const appActions = {
       setButtonDisabled('switch-to-background-blur-button', false);
       renderParticipant(currentRoom.localParticipant);
       updateButtonsForPublishState();
+    }
+  },
+
+  switchBackgroundProcessorType: async (processorType: BackgroundProcessorType) => {
+    const previousMode = getActiveBackgroundProcessor().mode;
+    state.selectedBackgroundProcessorType = processorType;
+    const camTrack = await getCameraTrack();
+
+    try {
+      if (!currentRoom) {
+        updateTrackProcessorModeButtons();
+        return;
+      }
+
+      if (camTrack && state.isBackgroundProcessorEnabled) {
+        await switchProcessorToMode(previousMode === 'legacy' ? 'background-blur' : previousMode);
+        await applyJBFProcessorOptions();
+        await camTrack.stopProcessor();
+        await camTrack.setProcessor(getActiveBackgroundProcessor());
+      }
+      appendLog(`using ${processorType} background processor`);
+    } catch (e: any) {
+      appendLog(`ERROR: ${e.message}`);
+    } finally {
+      updateTrackProcessorModeButtons();
+    }
+  },
+
+  updateJBFProcessorOptions: async () => {
+    try {
+      await applyJBFProcessorOptions();
+    } catch (e: any) {
+      appendLog(`ERROR: ${e.message}`);
     }
   },
 
@@ -383,6 +582,20 @@ const appActions = {
     currentRoom?.startAudio();
   },
 
+  toggleParticipantFullscreen: async (identity: string) => {
+    const participantElement = document.getElementById(`participant-${identity}`);
+    if (!participantElement) {
+      return;
+    }
+
+    if (document.fullscreenElement === participantElement) {
+      await document.exitFullscreen();
+      return;
+    }
+
+    await participantElement.requestFullscreen();
+  },
+
   disconnectRoom: () => {
     if (currentRoom) {
       currentRoom.disconnect();
@@ -412,10 +625,16 @@ declare global {
   interface Window {
     currentRoom: any;
     appActions: typeof appActions;
+    lastBackgroundProcessorStats?: Parameters<
+      NonNullable<
+        AdvancedBackgroundProcessorOptions['onFrameProcessed'] |
+        JBFBackgroundProcessorOptions['onFrameProcessed']
+      >
+    >[0];
   }
 }
 
-window.appActions = appActions;
+Object.assign(window.appActions, appActions);
 
 // --------------------------- event handlers ------------------------------- //
 
@@ -472,9 +691,8 @@ function appendLog(...args: any[]) {
   const logger = $('log')!;
   for (let i = 0; i < arguments.length; i += 1) {
     if (typeof args[i] === 'object') {
-      logger.innerHTML += `${
-        JSON && JSON.stringify ? JSON.stringify(args[i], undefined, 2) : args[i]
-      } `;
+      logger.innerHTML += `${JSON && JSON.stringify ? JSON.stringify(args[i], undefined, 2) : args[i]
+        } `;
     } else {
       logger.innerHTML += `${args[i]} `;
     }
@@ -512,14 +730,21 @@ function renderParticipant(participant: Participant, remove: boolean = false) {
         <div class="right">
           <span id="signal-${identity}"></span>
           <span id="mic-${identity}" class="mic-on"></span>
+          <button
+            class="fullscreen-button"
+            type="button"
+            title="Toggle fullscreen"
+            onclick="window.appActions.toggleParticipantFullscreen('${identity}')"
+          >
+            Fullscreen
+          </button>
         </div>
       </div>
-      ${
-        participant instanceof RemoteParticipant
-          ? `<div class="volume-control">
+      ${participant instanceof RemoteParticipant
+        ? `<div class="volume-control">
         <input id="volume-${identity}" type="range" min="0" max="1" step="0.1" value="1" orient="vertical" />
       </div>`
-          : `<progress id="local-volume" max="1" value="0" />`
+        : `<progress id="local-volume" max="1" value="0" />`
       }
 
     `;
@@ -777,6 +1002,7 @@ function updateButtonsForPublishState() {
 
 function updateTrackProcessorModeButtons() {
   const toggleTrackProcessorButtonEnabled = currentRoom?.state === ConnectionState.Connected;
+  const activeProcessor = getActiveBackgroundProcessor();
   if (state.isBackgroundProcessorEnabled) {
     setButtonState('toggle-track-processor', 'Remove Track Processor', false, !toggleTrackProcessorButtonEnabled);
     $('track-processor-modes').style.display = 'block';
@@ -785,13 +1011,13 @@ function updateTrackProcessorModeButtons() {
     $('track-processor-modes').style.display = 'none';
   }
 
-  const {active: activeButtonId, inactive: inactiveButtonIds} = {
+  const { active: activeButtonId, inactive: inactiveButtonIds } = {
     'disabled': { active: 'switch-to-disabled-button', inactive: ['switch-to-virtual-background-button', 'switch-to-background-blur-button'] },
     'virtual-background': { active: 'switch-to-virtual-background-button', inactive: ['switch-to-disabled-button', 'switch-to-background-blur-button'] },
     'background-blur': { active: 'switch-to-background-blur-button', inactive: ['switch-to-virtual-background-button', 'switch-to-disabled-button'] },
     'legacy': { active: null, inactive: [] }, // NOTE: should be impossible, but here for thoroughness
     'off': { active: null, inactive: [] },
-  }[state.isBackgroundProcessorEnabled ? state.backgroundProcessor.mode : 'off'];
+  }[state.isBackgroundProcessorEnabled ? activeProcessor.mode : 'off'];
 
   if (activeButtonId) {
     $(activeButtonId).classList.remove('btn-secondary');
@@ -802,11 +1028,14 @@ function updateTrackProcessorModeButtons() {
     $(inactiveId).classList.add('btn-secondary');
   }
 
-  if (state.backgroundProcessor.mode === 'virtual-background') {
+  if (activeProcessor.mode === 'virtual-background') {
     setButtonDisabled('update-bg-button', false);
   } else {
     setButtonDisabled('update-bg-button', true);
   }
+
+  $('jbf-processor-controls').style.display =
+    state.selectedBackgroundProcessorType === 'jbf' ? 'block' : 'none';
 }
 
 function updateAudioProcessorButtons() {
