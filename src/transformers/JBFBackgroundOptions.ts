@@ -26,6 +26,8 @@ export type JBFBackgroundCommonOptions = ProcessorWrapperOptions & {
   dilationStrength?: number;
   temporalMode?: JBFTemporalMode;
   temporalAlpha?: number;
+  maskFeatheringEnabled?: boolean;
+  maskFeatheringStrength?: number;
   hysteresisEnterThreshold?: number;
   hysteresisExitThreshold?: number;
   debugOutput?: JBFDebugOutput;
@@ -67,6 +69,8 @@ export type JBFBackgroundTransformerOptions = {
   dilationStrength?: number;
   temporalMode?: JBFTemporalMode;
   temporalAlpha?: number;
+  maskFeatheringEnabled?: boolean;
+  maskFeatheringStrength?: number;
   hysteresisEnterThreshold?: number;
   hysteresisExitThreshold?: number;
   debugOutput?: JBFDebugOutput;
@@ -111,6 +115,10 @@ export const DEFAULT_JBF_DILATION_STRENGTH = 0.7;
 export const DEFAULT_JBF_TEMPORAL_MODE: JBFTemporalMode = 'temporal';
 
 export const DEFAULT_JBF_TEMPORAL_ALPHA = 0.5;
+
+export const DEFAULT_JBF_MASK_FEATHERING_ENABLED = true;
+
+export const DEFAULT_JBF_MASK_FEATHERING_STRENGTH = 0.35;
 
 export const DEFAULT_JBF_HYSTERESIS_ENTER_THRESHOLD = 0.45;
 

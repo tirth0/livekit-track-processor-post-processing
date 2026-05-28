@@ -13,6 +13,7 @@ import {
 import { buildJointBilateralFilterStage } from './jointBilateralFilterStage';
 import { buildMaskDebugStage } from './maskDebugStage';
 import { buildMaskDilationStage } from './maskDilationStage';
+import { buildMaskFeatherStage } from './maskFeatherStage';
 import {
   buildTemporalMaskStage,
   type TemporalMaskMode,
@@ -32,6 +33,8 @@ export type JBFWebGLOptions = {
   dilationStrength?: number;
   temporalMode?: TemporalMaskMode;
   temporalAlpha?: number;
+  maskFeatheringEnabled?: boolean;
+  maskFeatheringStrength?: number;
   hysteresisEnterThreshold?: number;
   hysteresisExitThreshold?: number;
   debugOutput?:
@@ -50,6 +53,8 @@ const DEFAULT_DILATION_ENABLED = false;
 const DEFAULT_DILATION_STRENGTH = 0.7;
 const DEFAULT_TEMPORAL_MODE: TemporalMaskMode = 'temporal';
 const DEFAULT_TEMPORAL_ALPHA = 0.5;
+const DEFAULT_MASK_FEATHERING_ENABLED = true;
+const DEFAULT_MASK_FEATHERING_STRENGTH = 0.35;
 const DEFAULT_HYSTERESIS_ENTER_THRESHOLD = 0.45;
 const DEFAULT_HYSTERESIS_EXIT_THRESHOLD = 0.25;
 
@@ -102,6 +107,7 @@ export const setupJBFWebGL = (
   const dilatedMaskTexture = createTexture(gl, gl.RGBA8, canvas.width, canvas.height);
   const jbfMaskTexture = createTexture(gl, gl.RGBA8, canvas.width, canvas.height);
   const personMaskTexture = createTexture(gl, gl.RGBA8, canvas.width, canvas.height);
+  const featheredMaskTexture = createTexture(gl, gl.RGBA8, canvas.width, canvas.height);
 
   const maskBridge = buildMaskBridgeStage(
     gl,
@@ -153,6 +159,15 @@ export const setupJBFWebGL = (
     personMaskTexture,
     canvas,
   );
+  const maskFeatherStage = buildMaskFeatherStage(
+    gl,
+    vertexShader,
+    positionBuffer,
+    texCoordBuffer,
+    personMaskTexture,
+    featheredMaskTexture,
+    canvas,
+  );
   const maskDebugStage = buildMaskDebugStage(
     gl,
     positionBuffer,
@@ -164,14 +179,14 @@ export const setupJBFWebGL = (
     vertexShader,
     positionBuffer,
     texCoordBuffer,
-    personMaskTexture,
+    featheredMaskTexture,
     canvas,
   );
   const backgroundImageStage = buildBackgroundImageStage(
     gl,
     positionBuffer,
     texCoordBuffer,
-    personMaskTexture,
+    featheredMaskTexture,
     null,
     canvas,
   );
@@ -215,6 +230,10 @@ export const setupJBFWebGL = (
       enterThreshold: options.hysteresisEnterThreshold ?? DEFAULT_HYSTERESIS_ENTER_THRESHOLD,
       exitThreshold: options.hysteresisExitThreshold ?? DEFAULT_HYSTERESIS_EXIT_THRESHOLD,
     });
+    maskFeatherStage.updateOptions({
+      enabled: options.maskFeatheringEnabled ?? DEFAULT_MASK_FEATHERING_ENABLED,
+      strength: options.maskFeatheringStrength ?? DEFAULT_MASK_FEATHERING_STRENGTH,
+    });
   }
 
   function cleanup() {
@@ -224,6 +243,7 @@ export const setupJBFWebGL = (
     jointBilateralFilterStage.cleanUp();
     maskCopyStage.cleanUp();
     temporalMaskStage.cleanUp();
+    maskFeatherStage.cleanUp();
     maskDebugStage.cleanUp();
     backgroundBlurStage.cleanUp();
     backgroundImageStage.cleanUp();
@@ -235,6 +255,7 @@ export const setupJBFWebGL = (
     gl.deleteTexture(dilatedMaskTexture);
     gl.deleteTexture(jbfMaskTexture);
     gl.deleteTexture(personMaskTexture);
+    gl.deleteTexture(featheredMaskTexture);
   }
 
   return {
@@ -274,8 +295,9 @@ export const setupJBFWebGL = (
         maskDebugStage.render(personMaskTexture);
         return;
       }
+      maskFeatherStage.render();
       if (options.debugOutput === 'coverage-mask') {
-        maskDebugStage.render(personMaskTexture, options.coverage ?? DEFAULT_COVERAGE);
+        maskDebugStage.render(featheredMaskTexture, options.coverage ?? DEFAULT_COVERAGE);
         return;
       }
 

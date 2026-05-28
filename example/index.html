@@ -196,6 +196,25 @@
                   >
                     Update Background Image
                   </button>
+
+                  <div class="post-processing-card mt-2">
+                    <div class="post-processing-section">Background blur</div>
+                    <div class="post-processing-control">
+                      <label for="background-blur-radius">Blur radius</label>
+                      <div class="slider-with-value">
+                        <input
+                          type="range"
+                          id="background-blur-radius"
+                          min="0"
+                          max="30"
+                          step="1"
+                          value="10"
+                          oninput="window.appActions.updateBackgroundBlurRadius()"
+                        />
+                        <span id="background-blur-radius-value" class="slider-value">10</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <div id="jbf-processor-controls" class="post-processing-card mt-2" style="display: none;">
@@ -226,6 +245,33 @@
                         oninput="window.appActions.updateJBFProcessorOptions()"
                       />
                       <span id="jbf-dilation-strength-value" class="slider-value">0.70</span>
+                    </div>
+                  </div>
+                  <div class="post-processing-control">
+                    <label for="jbf-mask-feathering-enabled">Feathering</label>
+                    <label class="post-processing-checkbox">
+                      <input
+                        type="checkbox"
+                        id="jbf-mask-feathering-enabled"
+                        checked
+                        onchange="window.appActions.updateJBFProcessorOptions()"
+                      />
+                      Enabled
+                    </label>
+                  </div>
+                  <div class="post-processing-control">
+                    <label for="jbf-mask-feathering-strength">Feathering strength</label>
+                    <div class="slider-with-value">
+                      <input
+                        type="range"
+                        id="jbf-mask-feathering-strength"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value="0.35"
+                        oninput="window.appActions.updateJBFProcessorOptions()"
+                      />
+                      <span id="jbf-mask-feathering-strength-value" class="slider-value">0.35</span>
                     </div>
                   </div>
 

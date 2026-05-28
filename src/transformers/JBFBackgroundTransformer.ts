@@ -11,6 +11,8 @@ import {
   DEFAULT_JBF_HYSTERESIS_ENTER_THRESHOLD,
   DEFAULT_JBF_HYSTERESIS_EXIT_THRESHOLD,
   DEFAULT_JBF_JOINT_BILATERAL_FILTER_ENABLED,
+  DEFAULT_JBF_MASK_FEATHERING_ENABLED,
+  DEFAULT_JBF_MASK_FEATHERING_STRENGTH,
   DEFAULT_JBF_SIGMA_COLOR,
   DEFAULT_JBF_SIGMA_SPACE,
   DEFAULT_JBF_TEMPORAL_ALPHA,
@@ -232,6 +234,10 @@ export default class JBFBackgroundTransformer extends VideoTransformer<JBFBackgr
       dilationStrength: this.options.dilationStrength ?? DEFAULT_JBF_DILATION_STRENGTH,
       temporalMode: this.options.temporalMode ?? DEFAULT_JBF_TEMPORAL_MODE,
       temporalAlpha: this.options.temporalAlpha ?? DEFAULT_JBF_TEMPORAL_ALPHA,
+      maskFeatheringEnabled:
+        this.options.maskFeatheringEnabled ?? DEFAULT_JBF_MASK_FEATHERING_ENABLED,
+      maskFeatheringStrength:
+        this.options.maskFeatheringStrength ?? DEFAULT_JBF_MASK_FEATHERING_STRENGTH,
       hysteresisEnterThreshold:
         this.options.hysteresisEnterThreshold ?? DEFAULT_JBF_HYSTERESIS_ENTER_THRESHOLD,
       hysteresisExitThreshold:
@@ -281,6 +287,10 @@ export default class JBFBackgroundTransformer extends VideoTransformer<JBFBackgr
       dilationStrength: this.options.dilationStrength ?? DEFAULT_JBF_DILATION_STRENGTH,
       temporalMode: this.options.temporalMode ?? DEFAULT_JBF_TEMPORAL_MODE,
       temporalAlpha: this.options.temporalAlpha ?? DEFAULT_JBF_TEMPORAL_ALPHA,
+      maskFeatheringEnabled:
+        this.options.maskFeatheringEnabled ?? DEFAULT_JBF_MASK_FEATHERING_ENABLED,
+      maskFeatheringStrength:
+        this.options.maskFeatheringStrength ?? DEFAULT_JBF_MASK_FEATHERING_STRENGTH,
       hysteresisEnterThreshold:
         this.options.hysteresisEnterThreshold ?? DEFAULT_JBF_HYSTERESIS_ENTER_THRESHOLD,
       hysteresisExitThreshold:

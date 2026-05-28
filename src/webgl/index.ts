@@ -4,7 +4,7 @@
  * - downsample the video texture in background blur scenario before applying the (gaussian) blur for better performance
  *
  */
-import { getLogger, LoggerNames} from '../logger';
+import { getLogger, LoggerNames } from '../logger';
 import { applyBlur, createBlurProgram } from './shader-programs/blurShader';
 import { createBoxBlurProgram } from './shader-programs/boxBlurShader';
 import { createCompositeProgram } from './shader-programs/compositeShader';

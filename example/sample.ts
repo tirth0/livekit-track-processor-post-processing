@@ -42,7 +42,7 @@ import {
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
-const BLUR_RADIUS = 10;
+const DEFAULT_BLUR_RADIUS = 10;
 const resolveSampleAssetPath = (path: string) => {
   if (
     /^(https?:)?\/\//.test(path) ||
@@ -60,12 +60,12 @@ type BackgroundProcessorType = 'standard' | 'advanced' | 'jbf';
 type BackgroundProcessorMode = NonNullable<BackgroundProcessorOptions['mode']>;
 
 const createStandardBackgroundProcessor = () =>
-  BackgroundProcessor({ mode: 'background-blur', blurRadius: BLUR_RADIUS });
+  BackgroundProcessor({ mode: 'background-blur', blurRadius: getBackgroundBlurRadius() });
 
 const createAdvancedBackgroundProcessor = () =>
   AdvancedBackgroundProcessor({
     mode: 'background-blur',
-    blurRadius: BLUR_RADIUS,
+    blurRadius: getBackgroundBlurRadius(),
     qualityProfile: 'auto',
     onFrameProcessed: (stats) => {
       window.lastBackgroundProcessorStats = stats;
@@ -77,6 +77,13 @@ const updateSliderValue = (id: string, value: number, digits = 2) => {
   if (valueElement) {
     valueElement.textContent = value.toFixed(digits);
   }
+};
+
+const getBackgroundBlurRadius = () => {
+  const value = Number($<HTMLInputElement>('background-blur-radius').value);
+  const blurRadius = Number.isFinite(value) ? value : DEFAULT_BLUR_RADIUS;
+  updateSliderValue('background-blur-radius', blurRadius, 0);
+  return blurRadius;
 };
 
 const getJBFOptionsFromInputs = (): Pick<
@@ -91,6 +98,8 @@ const getJBFOptionsFromInputs = (): Pick<
   | 'dilationStrength'
   | 'temporalMode'
   | 'temporalAlpha'
+  | 'maskFeatheringEnabled'
+  | 'maskFeatheringStrength'
   | 'hysteresisEnterThreshold'
   | 'hysteresisExitThreshold'
   | 'debugOutput'
@@ -101,6 +110,7 @@ const getJBFOptionsFromInputs = (): Pick<
   const coverageMax = Math.max(Number(coverageMinInput.value), Number(coverageMaxInput.value));
   coverageMinInput.value = String(coverageMin);
   coverageMaxInput.value = String(coverageMax);
+  const maskFeatheringStrength = Number($<HTMLInputElement>('jbf-mask-feathering-strength').value);
   const coverageFill = $('jbf-coverage-fill');
   coverageFill.style.left = `${coverageMin * 100}%`;
   coverageFill.style.right = `${(1 - coverageMax) * 100}%`;
@@ -115,8 +125,10 @@ const getJBFOptionsFromInputs = (): Pick<
   const hysteresisExitThreshold = Number($<HTMLInputElement>('jbf-hysteresis-exit').value);
   const lightWrapping = Number($<HTMLInputElement>('jbf-light-wrapping').value);
   const jointBilateralFilterEnabled = $<HTMLInputElement>('jbf-enabled').checked;
+  const maskFeatheringEnabled = $<HTMLInputElement>('jbf-mask-feathering-enabled').checked;
 
   updateSliderValue('jbf-dilation-strength', dilationStrength);
+  updateSliderValue('jbf-mask-feathering-strength', maskFeatheringStrength);
   updateSliderValue('jbf-sigma-space', sigmaSpace, 1);
   updateSliderValue('jbf-sigma-color', sigmaColor);
   updateSliderValue('jbf-temporal-alpha', temporalAlpha);
@@ -125,6 +137,7 @@ const getJBFOptionsFromInputs = (): Pick<
   updateSliderValue('jbf-light-wrapping', lightWrapping);
   $<HTMLInputElement>('jbf-sigma-space').disabled = !jointBilateralFilterEnabled;
   $<HTMLInputElement>('jbf-sigma-color').disabled = !jointBilateralFilterEnabled;
+  $<HTMLInputElement>('jbf-mask-feathering-strength').disabled = !maskFeatheringEnabled;
 
   return {
     coverage: [coverageMin, coverageMax],
@@ -138,6 +151,8 @@ const getJBFOptionsFromInputs = (): Pick<
     temporalMode: $<HTMLSelectElement>('jbf-temporal-mode')
       .value as JBFBackgroundTransformerOptions['temporalMode'],
     temporalAlpha,
+    maskFeatheringEnabled,
+    maskFeatheringStrength,
     hysteresisEnterThreshold,
     hysteresisExitThreshold,
     debugOutput: $<HTMLSelectElement>('jbf-debug-output')
@@ -148,7 +163,7 @@ const getJBFOptionsFromInputs = (): Pick<
 const createJBFBackgroundProcessor = () =>
   JBFBackgroundProcessor({
     mode: 'background-blur',
-    blurRadius: BLUR_RADIUS,
+    blurRadius: getBackgroundBlurRadius(),
     ...getJBFOptionsFromInputs(),
     onFrameProcessed: (stats) => {
       window.lastBackgroundProcessorStats = stats;
@@ -222,7 +237,7 @@ async function switchProcessorToMode(mode: BackgroundProcessorMode) {
       await processor.switchTo({ mode: 'virtual-background', imagePath: IMAGE_PATH });
       break;
     case 'background-blur':
-      await processor.switchTo({ mode: 'background-blur', blurRadius: BLUR_RADIUS });
+      await processor.switchTo({ mode: 'background-blur', blurRadius: getBackgroundBlurRadius() });
       break;
   }
 }
@@ -547,6 +562,26 @@ const appActions = {
 
   updateJBFProcessorOptions: async () => {
     try {
+      await applyJBFProcessorOptions();
+    } catch (e: any) {
+      appendLog(`ERROR: ${e.message}`);
+    }
+  },
+
+  updateBackgroundBlurRadius: async () => {
+    getBackgroundBlurRadius();
+
+    try {
+      if (!state.isBackgroundProcessorEnabled) {
+        return;
+      }
+
+      const activeProcessor = getActiveBackgroundProcessor();
+      if (activeProcessor.mode !== 'background-blur') {
+        return;
+      }
+
+      await switchProcessorToMode('background-blur');
       await applyJBFProcessorOptions();
     } catch (e: any) {
       appendLog(`ERROR: ${e.message}`);
