@@ -165,7 +165,7 @@ let startTime: number;
 
 const SANDBOX_TOKEN_SERVER_ID = 'testvirtualbg-2ef785';
 const SANDBOX_LIVEKIT_URL = 'wss://test-virtual-bg-pbc4e9f6.livekit.cloud';
-const SANDBOX_ROOM_NAME = 'track-processors-sandbox';
+const SANDBOX_ROOM_PREFIX = 'track-processors-sandbox';
 
 const searchParams = new URLSearchParams(window.location.search);
 const storedUrl = searchParams.get('url') ?? SANDBOX_LIVEKIT_URL;
@@ -175,6 +175,10 @@ $<HTMLInputElement>('token').value = 'Generated automatically by the sandbox tok
 function updateSearchParams(url: string) {
   const params = new URLSearchParams({ url });
   window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
+}
+
+function generateSandboxRoomName() {
+  return `${SANDBOX_ROOM_PREFIX}-${crypto.randomUUID()}`;
 }
 
 function getActiveBackgroundProcessor() {
@@ -247,9 +251,11 @@ const appActions = {
     };
 
     const tokenSource = TokenSource.sandboxTokenServer(SANDBOX_TOKEN_SERVER_ID);
+    const roomName = generateSandboxRoomName();
     const { serverUrl, participantToken } = await tokenSource.fetch({
-      roomName: SANDBOX_ROOM_NAME,
+      roomName,
     });
+    appendLog(`joining randomized room: ${roomName}`);
 
     await appActions.connectToRoom(serverUrl || url || SANDBOX_LIVEKIT_URL, participantToken, roomOpts, connectOpts, true);
 
