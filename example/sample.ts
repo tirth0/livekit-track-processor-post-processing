@@ -1,5 +1,7 @@
 /// <reference types="vite/client" />
 
+import alternateBackgroundImagePath from './ali-kazal-tbw_KQE3Cbg-unsplash.jpg';
+import defaultBackgroundImagePath from './samantha-gades-BlIhVfXbi9s-unsplash.jpg';
 import {
   ConnectionQuality,
   ConnectionState,
@@ -42,13 +44,18 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 
 const BLUR_RADIUS = 10;
 const resolveSampleAssetPath = (path: string) => {
-  if (/^(https?:)?\/\//.test(path) || path.startsWith('data:')) {
+  if (
+    /^(https?:)?\/\//.test(path) ||
+    path.startsWith('data:') ||
+    path.startsWith(import.meta.env.BASE_URL)
+  ) {
     return path;
   }
 
   return `${import.meta.env.BASE_URL}${path.replace(/^\//, '')}`;
 };
-const IMAGE_PATH = resolveSampleAssetPath('samantha-gades-BlIhVfXbi9s-unsplash.jpg');
+const IMAGE_PATH = defaultBackgroundImagePath;
+const ALTERNATE_IMAGE_PATH = alternateBackgroundImagePath;
 type BackgroundProcessorType = 'standard' | 'advanced' | 'jbf';
 type BackgroundProcessorMode = NonNullable<BackgroundProcessorOptions['mode']>;
 
@@ -486,7 +493,7 @@ const appActions = {
     }
   },
 
-  updateVirtualBackgroundImage: async (imagePath: string) => {
+  updateVirtualBackgroundImage: async (imagePath = ALTERNATE_IMAGE_PATH) => {
     if (!currentRoom) return;
 
     try {
