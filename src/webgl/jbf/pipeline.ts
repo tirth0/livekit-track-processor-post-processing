@@ -38,12 +38,12 @@ export type JBFWebGLOptions = {
   hysteresisEnterThreshold?: number;
   hysteresisExitThreshold?: number;
   debugOutput?:
-    | 'none'
-    | 'raw-mask'
-    | 'dilated-mask'
-    | 'jbf-mask'
-    | 'temporal-mask'
-    | 'coverage-mask';
+  | 'none'
+  | 'raw-mask'
+  | 'dilated-mask'
+  | 'jbf-mask'
+  | 'temporal-mask'
+  | 'coverage-mask';
 };
 
 const DEFAULT_COVERAGE: [number, number] = [0.68, 0.83];
