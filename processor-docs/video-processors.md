@@ -58,7 +58,7 @@ await processor.switchTo({ mode: 'disabled' });
 
 ## JBF Tuning
 
-The processor accepts post-processing options in any mode. These can also be changed later with `updateTransformerOptions()`.
+JBF tuning options can be provided directly to `JBFBackgroundProcessor()` in any mode. Mode-specific fields such as `blurRadius` and `imagePath` control the active background effect, while the shared JBF options control mask refinement, temporal smoothing, compositing, debugging, and MediaPipe asset loading.
 
 ```ts
 const processor = JBFBackgroundProcessor({
@@ -73,22 +73,63 @@ const processor = JBFBackgroundProcessor({
   maskFeatheringEnabled: true,
   maskFeatheringStrength: 0.35,
 });
+```
 
+Use `updateTransformerOptions()` to change JBF tuning while the processor is attached. This is useful for tuning quality or performance from UI controls without calling `videoTrack.setProcessor()` again.
+
+```ts
 await processor.updateTransformerOptions({
+  jointBilateralFilterEnabled: true,
   temporalMode: 'hysteresis',
   hysteresisEnterThreshold: 0.45,
   hysteresisExitThreshold: 0.25,
+  debugOutput: 'none',
 });
 ```
 
-Useful options:
+Use `switchTo()` for changing processor modes, and `updateTransformerOptions()` for changing JBF tuning. For example, switch to a virtual background and then adjust the shared mask settings:
 
-- `coverage` controls the mask range used when compositing the person over the processed background.
-- `jointBilateralFilterEnabled`, `sigmaSpace`, and `sigmaColor` control edge-aware mask refinement.
-- `dilationEnabled` and `dilationStrength` can expand the mask before filtering.
-- `temporalMode`, `temporalAlpha`, `hysteresisEnterThreshold`, and `hysteresisExitThreshold` reduce mask flicker over time.
-- `maskFeatheringEnabled` and `maskFeatheringStrength` soften mask edges.
-- `debugOutput` can render intermediate masks for tuning.
+```ts
+await processor.switchTo({ mode: 'virtual-background', imagePath: '/background.jpg' });
+await processor.updateTransformerOptions({
+  coverage: [0.7, 0.86],
+  maskFeatheringStrength: 0.4,
+});
+```
+
+### Processor Options
+
+Mode-specific options:
+
+- `mode`: required. Accepts `background-blur`, `virtual-background`, or `disabled`. Selects the processor behavior.
+- `blurRadius`: default `10` for `background-blur`. Controls the blur radius applied to the background.
+- `imagePath`: required for `virtual-background`; no default. URL or path for the replacement background image.
+
+Shared JBF options:
+
+- `coverage`: default `[0.68, 0.83]`. Confidence-mask range used when compositing the foreground over the processed background.
+- `lightWrapping`: default `0.3`. Adds background color around foreground edges in virtual-background mode to reduce hard cutouts.
+- `blendMode`: default `screen`. Accepts `screen` or `linearDodge`; controls how light wrapping is blended into the foreground.
+- `jointBilateralFilterEnabled`: default `true`. Enables edge-aware mask refinement using the source frame as guidance.
+- `sigmaSpace`: default `1`. Controls the spatial radius of the joint bilateral filter.
+- `sigmaColor`: default `0.1`. Controls how strongly source-frame color differences preserve edges during JBF refinement.
+- `dilationEnabled`: default `false`. Expands the mask before filtering, which can help cover edge gaps around the person.
+- `dilationStrength`: default `0.7`. Controls how strongly mask dilation expands foreground coverage when dilation is enabled.
+- `temporalMode`: default `temporal`. Accepts `off`, `temporal`, or `hysteresis`; controls frame-to-frame mask smoothing.
+- `temporalAlpha`: default `0.5`. Smoothing factor for `temporal` mode; higher values react faster to new masks.
+- `hysteresisEnterThreshold`: default `0.45`. Foreground threshold for entering the mask in `hysteresis` mode.
+- `hysteresisExitThreshold`: default `0.25`. Background threshold for leaving the mask in `hysteresis` mode.
+- `maskFeatheringEnabled`: default `true`. Softens mask edges after refinement.
+- `maskFeatheringStrength`: default `0.35`. Controls how much feathering is applied when mask feathering is enabled.
+- `debugOutput`: default `none`. Accepts `none`, `raw-mask`, `dilated-mask`, `jbf-mask`, `temporal-mask`, or `coverage-mask`; renders intermediate masks for tuning.
+
+MediaPipe, stats, and wrapper options:
+
+- `segmenterOptions`: default `{}`. Extra MediaPipe image segmenter base options; these are merged into the default GPU segmenter configuration.
+- `assetPaths.tasksVisionFileSet`: default `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@<installed-version>/wasm`. Override when self-hosting MediaPipe WASM files.
+- `assetPaths.modelAssetPath`: default `https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite`. Override when self-hosting the model.
+- `onFrameProcessed`: default `undefined`. Callback that receives `processingTimeMs`, `segmentationTimeMs`, and `filterTimeMs` for each processed frame.
+- `maxFps`: default `30`. Maximum frame rate used by the canvas `captureStream()` fallback path.
 
 ## Custom MediaPipe Assets
 
