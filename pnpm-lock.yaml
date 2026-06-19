@@ -21,9 +21,6 @@ importers:
       '@changesets/cli':
         specifier: ^2.26.2
         version: 2.31.0
-      '@livekit/changesets-changelog-github':
-        specifier: ^0.0.4
-        version: 0.0.4
       '@trivago/prettier-plugin-sort-imports':
         specifier: ^4.2.1
         version: 4.3.0(prettier@2.8.8)
@@ -525,9 +522,6 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
-
-  '@livekit/changesets-changelog-github@0.0.4':
-    resolution: {integrity: sha512-MXaiLYwgkYciZb8G2wkVtZ1pJJzZmVx5cM30Q+ClslrIYyAqQhRbPmZDM79/5CGxb1MTemR/tfOM25tgJgAK0g==}
 
   '@livekit/mutex@1.1.1':
     resolution: {integrity: sha512-EsshAucklmpuUAfkABPxJNhzj9v2sG7JuzFDL4ML1oJQSV14sqrpTYnsaOudMAw9yOaW53NU3QQTlUQoRs4czw==}
@@ -2634,14 +2628,6 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
-
-  '@livekit/changesets-changelog-github@0.0.4':
-    dependencies:
-      '@changesets/get-github-info': 0.5.2
-      '@changesets/types': 5.2.1
-      dotenv: 8.6.0
-    transitivePeerDependencies:
-      - encoding
 
   '@livekit/mutex@1.1.1': {}
 

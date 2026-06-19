@@ -1,9 +1,15 @@
 import { type ProcessorOptions, type Track, type TrackProcessor } from 'livekit-client';
+import { LoggerNames, getLogger } from './logger';
 import { TrackTransformer, TrackTransformerDestroyOptions } from './transformers';
 import { createCanvas, waitForTrackResolution } from './utils';
-import { LoggerNames, getLogger } from './logger';
 
-type ProcessorWrapperLifecycleState = 'idle' | 'initializing' | 'running' | 'media-exhausted' | 'destroying' | 'destroyed';
+type ProcessorWrapperLifecycleState =
+  | 'idle'
+  | 'initializing'
+  | 'running'
+  | 'media-exhausted'
+  | 'destroying'
+  | 'destroyed';
 
 export interface ProcessorWrapperOptions {
   /**
@@ -16,8 +22,7 @@ export interface ProcessorWrapperOptions {
 export default class ProcessorWrapper<
   TransformerOptions extends Record<string, unknown>,
   Transformer extends TrackTransformer<TransformerOptions> = TrackTransformer<TransformerOptions>,
->
-  implements TrackProcessor<Track.Kind>
+> implements TrackProcessor<Track.Kind>
 {
   /**
    * Determines if the Processor is supported on the current browser
@@ -87,11 +92,7 @@ export default class ProcessorWrapper<
 
   private lifecycleState: ProcessorWrapperLifecycleState = 'idle';
 
-  constructor(
-    transformer: Transformer,
-    name: string,
-    options: ProcessorWrapperOptions = {},
-  ) {
+  constructor(transformer: Transformer, name: string, options: ProcessorWrapperOptions = {}) {
     this.name = name;
     this.transformer = transformer;
     this.maxFps = options.maxFps ?? 30;
@@ -187,7 +188,11 @@ export default class ProcessorWrapper<
       .catch((e) => {
         if (e instanceof DOMException && e.name === 'AbortError') {
           this.log.log('stream processor path aborted');
-        } else if (e instanceof DOMException && e.name === 'InvalidStateError' && e.message === 'Stream closed') {
+        } else if (
+          e instanceof DOMException &&
+          e.name === 'InvalidStateError' &&
+          e.message === 'Stream closed'
+        ) {
           this.log.log('stream processor underlying stream closed');
           this.handleMediaExhausted();
         } else {
@@ -364,7 +369,6 @@ export default class ProcessorWrapper<
   }
 
   async restartTransformer(...options: Parameters<(typeof this.transformer)['restart']>) {
-    // @ts-ignore unclear why the restart method only accepts VideoTransformerInitOptions instead of either those or AudioTransformerInitOptions
     await this.transformer.restart(options[0]);
   }
 
@@ -378,8 +382,10 @@ export default class ProcessorWrapper<
     if (this.lifecycleState !== 'running') {
       return;
     }
-    this.lifecycleState = 'media-exhausted'
+    this.lifecycleState = 'media-exhausted';
     await this.cleanup();
+    await this.transformer.destroy({ willProcessorRestart: false });
+    this.lifecycleState = 'destroyed';
   }
 
   /** Tears down the media stack logic initialized in initStreamProcessorPath / initFallbackPath */
@@ -402,8 +408,14 @@ export default class ProcessorWrapper<
     }
   }
 
-  async destroy(transformerDestroyOptions: TrackTransformerDestroyOptions = { willProcessorRestart: false }) {
-    this.log.debug(`Destroy called - lifecycleState=${this.lifecycleState}, transformerDestroyOptions=${JSON.stringify(transformerDestroyOptions)}`);
+  async destroy(
+    transformerDestroyOptions: TrackTransformerDestroyOptions = { willProcessorRestart: false },
+  ) {
+    this.log.debug(
+      `Destroy called - lifecycleState=${
+        this.lifecycleState
+      }, transformerDestroyOptions=${JSON.stringify(transformerDestroyOptions)}`,
+    );
     switch (this.lifecycleState) {
       case 'running':
       case 'media-exhausted':

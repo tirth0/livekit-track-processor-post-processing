@@ -30,11 +30,6 @@ import {
   setLogLevel,
 } from 'livekit-client';
 import {
-  AdvancedBackgroundProcessor,
-  AdvancedBackgroundProcessorOptions,
-  BackgroundProcessor,
-  BackgroundProcessorOptions,
-  GainAudioProcessor,
   JBFBackgroundProcessor,
   JBFBackgroundProcessorOptions,
   JBFBackgroundTransformerOptions,
@@ -56,21 +51,7 @@ const resolveSampleAssetPath = (path: string) => {
 };
 const IMAGE_PATH = defaultBackgroundImagePath;
 const ALTERNATE_IMAGE_PATH = alternateBackgroundImagePath;
-type BackgroundProcessorType = 'standard' | 'advanced' | 'jbf';
-type BackgroundProcessorMode = NonNullable<BackgroundProcessorOptions['mode']>;
-
-const createStandardBackgroundProcessor = () =>
-  BackgroundProcessor({ mode: 'background-blur', blurRadius: getBackgroundBlurRadius() });
-
-const createAdvancedBackgroundProcessor = () =>
-  AdvancedBackgroundProcessor({
-    mode: 'background-blur',
-    blurRadius: getBackgroundBlurRadius(),
-    qualityProfile: 'auto',
-    onFrameProcessed: (stats) => {
-      window.lastBackgroundProcessorStats = stats;
-    },
-  });
+type BackgroundProcessorMode = JBFBackgroundProcessorOptions['mode'];
 
 const updateSliderValue = (id: string, value: number, digits = 2) => {
   const valueElement = document.getElementById(`${id}-value`);
@@ -174,12 +155,7 @@ const state = {
   defaultDevices: new Map<MediaDeviceKind, string>(),
   bitrateInterval: undefined as any,
   isBackgroundProcessorEnabled: false,
-  selectedBackgroundProcessorType: 'jbf' as BackgroundProcessorType,
-  standardBackgroundProcessor: undefined as ReturnType<typeof createStandardBackgroundProcessor> | undefined,
-  advancedBackgroundProcessor: undefined as ReturnType<typeof createAdvancedBackgroundProcessor> | undefined,
   jbfBackgroundProcessor: undefined as ReturnType<typeof createJBFBackgroundProcessor> | undefined,
-  isAudioProcessorEnabled: false,
-  gainProcessor: new GainAudioProcessor({ gainValue: 1.0 }),
 };
 let currentRoom: Room | undefined;
 
@@ -204,18 +180,8 @@ function generateSandboxRoomName() {
 }
 
 function getActiveBackgroundProcessor() {
-  if (state.selectedBackgroundProcessorType === 'advanced') {
-    state.advancedBackgroundProcessor ??= createAdvancedBackgroundProcessor();
-    return state.advancedBackgroundProcessor;
-  }
-
-  if (state.selectedBackgroundProcessorType === 'jbf') {
-    state.jbfBackgroundProcessor ??= createJBFBackgroundProcessor();
-    return state.jbfBackgroundProcessor;
-  }
-
-  state.standardBackgroundProcessor ??= createStandardBackgroundProcessor();
-  return state.standardBackgroundProcessor;
+  state.jbfBackgroundProcessor ??= createJBFBackgroundProcessor();
+  return state.jbfBackgroundProcessor;
 }
 
 async function applyJBFProcessorOptions() {
@@ -535,31 +501,6 @@ const appActions = {
     }
   },
 
-  switchBackgroundProcessorType: async (processorType: BackgroundProcessorType) => {
-    const previousMode = getActiveBackgroundProcessor().mode;
-    state.selectedBackgroundProcessorType = processorType;
-    const camTrack = await getCameraTrack();
-
-    try {
-      if (!currentRoom) {
-        updateTrackProcessorModeButtons();
-        return;
-      }
-
-      if (camTrack && state.isBackgroundProcessorEnabled) {
-        await switchProcessorToMode(previousMode === 'legacy' ? 'background-blur' : previousMode);
-        await applyJBFProcessorOptions();
-        await camTrack.stopProcessor();
-        await camTrack.setProcessor(getActiveBackgroundProcessor());
-      }
-      appendLog(`using ${processorType} background processor`);
-    } catch (e: any) {
-      appendLog(`ERROR: ${e.message}`);
-    } finally {
-      updateTrackProcessorModeButtons();
-    }
-  },
-
   updateJBFProcessorOptions: async () => {
     try {
       await applyJBFProcessorOptions();
@@ -585,44 +526,6 @@ const appActions = {
       await applyJBFProcessorOptions();
     } catch (e: any) {
       appendLog(`ERROR: ${e.message}`);
-    }
-  },
-
-  toggleAudioProcessorEnabled: async () => {
-    if (!currentRoom) return;
-
-    setButtonDisabled('toggle-audio-processor', true);
-
-    try {
-      const micPub = currentRoom.localParticipant.getTrackPublication(Track.Source.Microphone);
-      if (!micPub || !micPub.track) {
-        appendLog('ERROR: No microphone track found. Enable audio first.');
-        return;
-      }
-      const micTrack = micPub.track as LocalAudioTrack;
-
-      if (state.isAudioProcessorEnabled) {
-        await micTrack.stopProcessor();
-        state.isAudioProcessorEnabled = false;
-      } else {
-        await micTrack.setProcessor(state.gainProcessor);
-        state.isAudioProcessorEnabled = true;
-      }
-    } catch (e: any) {
-      appendLog(`ERROR: ${e.message}`);
-    } finally {
-      updateAudioProcessorButtons();
-      if (currentRoom?.state === ConnectionState.Connected) {
-        setButtonDisabled('toggle-audio-processor', false);
-      }
-    }
-  },
-
-  updateGain: (value: number) => {
-    state.gainProcessor.setGain(value);
-    const display = $('gain-value');
-    if (display) {
-      display.textContent = value.toFixed(1);
     }
   },
 
@@ -674,10 +577,7 @@ declare global {
     currentRoom: any;
     appActions: typeof appActions;
     lastBackgroundProcessorStats?: Parameters<
-      NonNullable<
-        AdvancedBackgroundProcessorOptions['onFrameProcessed'] |
-        JBFBackgroundProcessorOptions['onFrameProcessed']
-      >
+      NonNullable<JBFBackgroundProcessorOptions['onFrameProcessed']>
     >[0];
   }
 }
@@ -716,9 +616,7 @@ function handleRoomDisconnect(reason?: DisconnectReason) {
   appendLog('disconnected from room', { reason });
   setButtonsForState(false);
   state.isBackgroundProcessorEnabled = false;
-  state.isAudioProcessorEnabled = false;
   updateTrackProcessorModeButtons();
-  updateAudioProcessorButtons();
   renderParticipant(currentRoom.localParticipant, true);
   currentRoom.remoteParticipants.forEach((p) => {
     renderParticipant(p, true);
@@ -977,7 +875,6 @@ function setButtonsForState(connected: boolean) {
     'switch-to-background-blur-button',
     'switch-to-virtual-background-button',
     'switch-to-disabled-button',
-    'toggle-audio-processor',
   ];
   const disconnectedSet = ['connect-button'];
 
@@ -1063,7 +960,6 @@ function updateTrackProcessorModeButtons() {
     'disabled': { active: 'switch-to-disabled-button', inactive: ['switch-to-virtual-background-button', 'switch-to-background-blur-button'] },
     'virtual-background': { active: 'switch-to-virtual-background-button', inactive: ['switch-to-disabled-button', 'switch-to-background-blur-button'] },
     'background-blur': { active: 'switch-to-background-blur-button', inactive: ['switch-to-virtual-background-button', 'switch-to-disabled-button'] },
-    'legacy': { active: null, inactive: [] }, // NOTE: should be impossible, but here for thoroughness
     'off': { active: null, inactive: [] },
   }[state.isBackgroundProcessorEnabled ? activeProcessor.mode : 'off'];
 
@@ -1082,19 +978,7 @@ function updateTrackProcessorModeButtons() {
     setButtonDisabled('update-bg-button', true);
   }
 
-  $('jbf-processor-controls').style.display =
-    state.selectedBackgroundProcessorType === 'jbf' ? 'block' : 'none';
-}
-
-function updateAudioProcessorButtons() {
-  const toggleButtonEnabled = currentRoom?.state === ConnectionState.Connected;
-  if (state.isAudioProcessorEnabled) {
-    setButtonState('toggle-audio-processor', 'Remove Audio Processor', false, !toggleButtonEnabled);
-    $('audio-processor-controls').style.display = 'block';
-  } else {
-    setButtonState('toggle-audio-processor', 'Insert Audio Processor', false, !toggleButtonEnabled);
-    $('audio-processor-controls').style.display = 'none';
-  }
+  $('jbf-processor-controls').style.display = 'block';
 }
 
 async function acquireDeviceList() {

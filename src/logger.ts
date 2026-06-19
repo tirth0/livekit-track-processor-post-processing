@@ -11,8 +11,8 @@ export enum LogLevel {
 
 export enum LoggerNames {
   ProcessorWrapper = 'livekit-processor-wrapper',
-  BackgroundProcessor = 'livekit-background-processor',
-  WebGl = 'livekit-track-processor-web-gl',
+  BackgroundProcessor = 'livekit-jbf-background-processor',
+  WebGl = 'livekit-track-processor-jbf-web-gl',
 }
 
 type LogLevelString = keyof typeof LogLevel;

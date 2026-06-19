@@ -49,9 +49,9 @@ export function createProgram(
   gl.attachShader(program, fragmentShader);
   gl.linkProgram(program);
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    throw new Error(
-      `Could not link WebGL program: ${gl.getProgramInfoLog(program)}`,
-    );
+    const infoLog = gl.getProgramInfoLog(program);
+    gl.deleteProgram(program);
+    throw new Error(`Could not link WebGL program: ${infoLog}`);
   }
   return program;
 }
@@ -65,7 +65,9 @@ export function compileShader(
   gl.shaderSource(shader, shaderSource);
   gl.compileShader(shader);
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    throw new Error(`Could not compile shader: ${gl.getShaderInfoLog(shader)}`);
+    const infoLog = gl.getShaderInfoLog(shader);
+    gl.deleteShader(shader);
+    throw new Error(`Could not compile shader: ${infoLog}`);
   }
   return shader;
 }

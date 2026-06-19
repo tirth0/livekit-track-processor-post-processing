@@ -1,98 +1,118 @@
-# Video Processors
+# JBF Video Processor
 
-This document covers the video track processors available in `@livekit/track-processors`.
+This package provides `JBFBackgroundProcessor`, a LiveKit video `TrackProcessor` that uses person segmentation plus joint bilateral filter post-processing for cleaner background blur and virtual backgrounds.
 
-## BackgroundProcessor
+## Browser Support
 
-The `BackgroundProcessor` is a prebuilt video processor that supports blurring the background of a user's local video or replacing it with a virtual background image. It can be switched between modes on the fly.
-
-### Available modes
-
-- `BackgroundProcessor({ mode: 'background-blur', blurRadius: 10 })` — Blur the background with an optional blur radius (defaults to 10)
-- `BackgroundProcessor({ mode: 'virtual-background', imagePath: "http://path.to/image.png" })` — Replace the background with an image
-- `BackgroundProcessor({ mode: 'disabled' })` — Passthrough mode, no effect applied (useful for avoiding switching artifacts, see below)
-
-### Browser support
-
-Before using `BackgroundProcessor`, check for browser compatibility:
+JBF processing requires WebGL2, `OffscreenCanvas`, `VideoFrame`, and either `MediaStreamTrackProcessor`/`MediaStreamTrackGenerator` or the canvas capture fallback used by `ProcessorWrapper`.
 
 ```ts
 import {
-  BackgroundProcessor,
-  supportsBackgroundProcessors,
-  supportsModernBackgroundProcessors,
-} from '@livekit/track-processors';
+  supportsJBFBackgroundProcessors,
+  supportsModernJBFBackgroundProcessors,
+} from '@tirth0/livekit-track-processor-jbf';
 
-if (!supportsBackgroundProcessors()) {
-  throw new Error('This browser does not support background processors');
+if (!supportsJBFBackgroundProcessors()) {
+  throw new Error('This browser does not support JBF background processors');
 }
 
-if (supportsModernBackgroundProcessors()) {
-  console.log('This browser supports modern APIs that are more performant');
+if (supportsModernJBFBackgroundProcessors()) {
+  console.log('This browser supports the modern processor APIs');
 }
 ```
 
-### Usage
-
-The simplest approach is to create a processor and attach it to a local video track:
+## Basic Usage
 
 ```ts
-import { BackgroundProcessor } from '@livekit/track-processors';
+import { createLocalVideoTrack } from 'livekit-client';
+import { JBFBackgroundProcessor } from '@tirth0/livekit-track-processor-jbf';
 
 const videoTrack = await createLocalVideoTrack();
-const processor = BackgroundProcessor({ mode: 'background-blur' });
+const processor = JBFBackgroundProcessor({
+  mode: 'background-blur',
+  blurRadius: 10,
+});
+
 await videoTrack.setProcessor(processor);
 room.localParticipant.publishTrack(videoTrack);
 ```
 
-### Avoiding visual artifacts when toggling
+## Modes
 
-Calling `videoTrack.setProcessor()` / `videoTrack.stopProcessor()` on demand can produce visual artifacts during the switch. A better approach is to initialize the processor in `disabled` mode up front and use `switchTo()` to toggle effects. This avoids artifacts entirely:
+- `JBFBackgroundProcessor({ mode: 'background-blur', blurRadius: 10 })` blurs the background behind the person.
+- `JBFBackgroundProcessor({ mode: 'virtual-background', imagePath: '/background.jpg' })` replaces the background with an image.
+- `JBFBackgroundProcessor({ mode: 'disabled' })` passes frames through unchanged while keeping the processor attached.
+
+## Switching Modes
+
+Calling `videoTrack.setProcessor()` and `videoTrack.stopProcessor()` for every toggle can create visual artifacts. Initialize once, then switch modes through the processor:
 
 ```ts
-const videoTrack = await createLocalVideoTrack();
-const processor = BackgroundProcessor({ mode: 'disabled' });
+const processor = JBFBackgroundProcessor({ mode: 'disabled' });
 await videoTrack.setProcessor(processor);
-room.localParticipant.publishTrack(videoTrack);
 
-async function enableBlur(radius) {
-  await processor.switchTo({ mode: 'background-blur', blurRadius: radius });
-}
-
-async function disableBlur() {
-  await processor.switchTo({ mode: 'disabled' });
-}
+await processor.switchTo({ mode: 'background-blur', blurRadius: 12 });
+await processor.switchTo({ mode: 'virtual-background', imagePath: '/background.jpg' });
+await processor.switchTo({ mode: 'disabled' });
 ```
 
-## Developing your own video processor
+## JBF Tuning
 
-### Architecture overview
+The processor accepts post-processing options in any mode. These can also be changed later with `updateTransformerOptions()`.
+
+```ts
+const processor = JBFBackgroundProcessor({
+  mode: 'background-blur',
+  blurRadius: 10,
+  coverage: [0.68, 0.83],
+  jointBilateralFilterEnabled: true,
+  sigmaSpace: 1,
+  sigmaColor: 0.1,
+  temporalMode: 'temporal',
+  temporalAlpha: 0.5,
+  maskFeatheringEnabled: true,
+  maskFeatheringStrength: 0.35,
+});
+
+await processor.updateTransformerOptions({
+  temporalMode: 'hysteresis',
+  hysteresisEnterThreshold: 0.45,
+  hysteresisExitThreshold: 0.25,
+});
+```
+
+Useful options:
+
+- `coverage` controls the mask range used when compositing the person over the processed background.
+- `jointBilateralFilterEnabled`, `sigmaSpace`, and `sigmaColor` control edge-aware mask refinement.
+- `dilationEnabled` and `dilationStrength` can expand the mask before filtering.
+- `temporalMode`, `temporalAlpha`, `hysteresisEnterThreshold`, and `hysteresisExitThreshold` reduce mask flicker over time.
+- `maskFeatheringEnabled` and `maskFeatheringStrength` soften mask edges.
+- `debugOutput` can render intermediate masks for tuning.
+
+## Custom MediaPipe Assets
+
+By default, the processor loads MediaPipe Tasks Vision WASM from jsDelivr and the selfie segmenter model from Google Cloud Storage. Override those paths when you need to self-host assets:
+
+```ts
+const processor = JBFBackgroundProcessor({
+  mode: 'background-blur',
+  assetPaths: {
+    tasksVisionFileSet: '/mediapipe/wasm',
+    modelAssetPath: '/models/selfie_segmenter.tflite',
+  },
+});
+```
+
+## Architecture Overview
 
 ```mermaid
 flowchart LR
-    A[Camera\nMediaStreamTrack] --> B[ProcessorWrapper]
-    B -->|VideoFrame| C[Transformer<br>e.g. BackgroundTransformer]
-    C -->|Transformed<br>VideoFrame| B
-    B --> D[Processed<br>MediaStreamTrack]
-    D --> E[Published to SFU]
+  camera["Camera MediaStreamTrack"] --> wrapper[ProcessorWrapper]
+  wrapper -->|"VideoFrame"| transformer[JBFBackgroundTransformer]
+  transformer -->|"Segmented and composited VideoFrame"| wrapper
+  wrapper --> processed["Processed MediaStreamTrack"]
+  processed --> livekit["Published to LiveKit"]
 ```
 
-Video processors in this package are built on two layers:
-
-1. **`ProcessorWrapper`** — Handles the plumbing of intercepting a video track's frames, passing them through a transformer, and producing a processed output track. It manages browser compatibility (using `MediaStreamTrackProcessor`/`MediaStreamTrackGenerator` where available, with a `canvas.captureStream()` fallback).
-
-2. **A Transformer** (e.g., `BackgroundTransformer`) — Implements the actual frame-by-frame processing logic.
-
-> **Note:** You don't have to follow this `Transformer` + `ProcessorWrapper` pattern. You can implement the `TrackProcessor` interface directly if you prefer. However, using `ProcessorWrapper` is convenient because it abstracts away the `MediaStreamTrack` → `VideoFrame` → transformer → `VideoFrame` → `MediaStreamTrack` conversion, which most use cases don't need to worry about.
-
-To create a custom video processor using `ProcessorWrapper`, instantiate it with your own transformer:
-
-```ts
-import { ProcessorWrapper } from '@livekit/track-processors';
-
-const pipeline = new ProcessorWrapper(new MyCustomTransformer(options));
-```
-
-### Available base transformers
-
-- **BackgroundTransformer** — Can blur the background, replace it with a virtual background image, or operate in a disabled passthrough state.
+`ProcessorWrapper` handles the browser track processing plumbing. `JBFBackgroundTransformer` owns segmentation, JBF mask refinement, temporal smoothing, and WebGL compositing.

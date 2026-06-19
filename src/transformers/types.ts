@@ -7,8 +7,6 @@ export interface VideoTransformerInitOptions extends TrackTransformerInitOptions
   inputElement: HTMLVideoElement;
 }
 
-export interface AudioTransformerInitOptions extends TrackTransformerInitOptions {}
-
 export interface VideoTrackTransformer<Options extends Record<string, unknown>>
   extends BaseTrackTransformer<VideoTransformerInitOptions, VideoFrame, TrackTransformerDestroyOptions> {
   init: (options: VideoTransformerInitOptions) => void;
@@ -19,25 +17,13 @@ export interface VideoTrackTransformer<Options extends Record<string, unknown>>
   update: (options: Options) => void;
 }
 
-export interface AudioTrackTransformer<Options extends Record<string, unknown>>
-  extends BaseTrackTransformer<AudioTransformerInitOptions, AudioData, TrackTransformerDestroyOptions> {
-  init: (options: AudioTransformerInitOptions) => void;
-  destroy: (options: TrackTransformerDestroyOptions) => void;
-  restart: (options: AudioTransformerInitOptions) => void;
-  transform: (frame: AudioData, controller: TransformStreamDefaultController) => void;
-  transformer?: TransformStream;
-  update: (options: Options) => void;
-}
-
 export type TrackTransformerDestroyOptions = { willProcessorRestart: boolean };
 
-export type TrackTransformer<Options extends Record<string, unknown>> =
-  | VideoTrackTransformer<Options>
-  | AudioTrackTransformer<Options>;
+export type TrackTransformer<Options extends Record<string, unknown>> = VideoTrackTransformer<Options>;
 
 export interface BaseTrackTransformer<
   InitOpts extends TrackTransformerInitOptions,
-  DataType extends VideoFrame | AudioData,
+  DataType extends VideoFrame,
   DestroyOpts extends TrackTransformerDestroyOptions = TrackTransformerDestroyOptions,
 > {
   init: (options: InitOpts) => void;

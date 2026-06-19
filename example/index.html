@@ -133,19 +133,6 @@
                     Insert Track Processor
                   </button>
 
-                  <div class="mr-2">
-                    <span class="text-secondary">Processor:</span>
-                    <select
-                      class="custom-select"
-                      id="processor-type-select"
-                      style="width: 180px;"
-                      onchange="window.appActions.switchBackgroundProcessorType(this.value)"
-                    >
-                      <option value="standard">Standard</option>
-                      <option value="jbf" selected>JBF</option>
-                    </select>
-                  </div>
-
                   <div id="initial-mode-wrapper" style="display: none;">
                     <span class="text-secondary">Initial mode:</span>
                     <select class="custom-select" id="initial-mode-select" style="width: 200px;">
@@ -452,37 +439,6 @@
                       />
                       <span id="jbf-light-wrapping-value" class="slider-value">0.30</span>
                     </div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="card mt-1 mb-1 mx-n2 p-2">
-                <div class="d-flex align-items-center justify-content-between">
-                  <button
-                    id="toggle-audio-processor"
-                    class="btn btn-secondary mr-2"
-                    disabled
-                    type="button"
-                    onclick="window.appActions.toggleAudioProcessorEnabled()"
-                  >
-                    Insert Audio Processor
-                  </button>
-                </div>
-
-                <div id="audio-processor-controls" style="display: none;">
-                  <div class="d-flex align-items-center mt-1">
-                    <label for="gain-slider" class="mr-2 mb-0">Gain:</label>
-                    <input
-                      type="range"
-                      id="gain-slider"
-                      min="0"
-                      max="3"
-                      value="1"
-                      step="0.1"
-                      style="flex: 1;"
-                      oninput="window.appActions.updateGain(parseFloat(this.value))"
-                    />
-                    <span id="gain-value" class="ml-2" style="min-width: 40px;">1.0</span>
                   </div>
                 </div>
               </div>

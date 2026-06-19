@@ -1,75 +1,47 @@
-# LiveKit track processors
+# LiveKit JBF background processor
 
-Prebuilt audio and video track processors for [LiveKit](https://livekit.io), implementing the [`TrackProcessor`](https://docs.livekit.io/reference/client-sdk-js/interfaces/TrackProcessor.html) interface from `livekit-client`.
+Joint bilateral filter background processor for [LiveKit](https://livekit.io) video tracks. The processor implements the [`TrackProcessor`](https://docs.livekit.io/reference/client-sdk-js/interfaces/TrackProcessor.html) interface from `livekit-client` and can blur the background, replace it with an image, or run in disabled passthrough mode.
 
 ## Install
 
-```
-npm add @livekit/track-processors
+```sh
+npm add @tirth0/livekit-track-processor-jbf
 ```
 
-## Video processors
-
-Video track processors intercept a local video track's frames and transform them before they are sent to other participants. This package provides a prebuilt `BackgroundProcessor` that supports background blur and virtual backgrounds:
+## Usage
 
 ```ts
-import { BackgroundProcessor } from '@livekit/track-processors';
+import { JBFBackgroundProcessor } from '@tirth0/livekit-track-processor-jbf';
 
-const processor = BackgroundProcessor({ mode: 'background-blur', blurRadius: 10 });
-await videoTrack.setProcessor(processor);
-```
-
-Available modes: `background-blur`, `virtual-background`, and `disabled` (passthrough).
-
-For higher-quality post-segmentation processing, use `AdvancedBackgroundProcessor`. It keeps the same blur/image/disabled modes, but refines the segmentation mask at a lower resolution before compositing at full resolution:
-
-```ts
-import { AdvancedBackgroundProcessor } from '@livekit/track-processors';
-
-const processor = AdvancedBackgroundProcessor({
-  mode: 'virtual-background',
-  imagePath: '/backgrounds/office.jpg',
-  qualityProfile: 'auto',
-  postProcessing: {
-    maskResolution: { width: 320, height: 180 },
-    temporalSmoothing: 0.6,
-  },
-  onFrameProcessed: (stats) => {
-    console.log(stats.renderTimeMs, stats.maskProcessingTimeMs, stats.qualityProfile);
-  },
+const processor = JBFBackgroundProcessor({
+  mode: 'background-blur',
+  blurRadius: 10,
 });
 
 await videoTrack.setProcessor(processor);
-await processor.switchTo({ mode: 'background-blur', blurRadius: 10 });
 ```
 
-See [processor-docs/video-processors.md](processor-docs/video-processors.md) for full usage, browser support checks, and how to avoid visual artifacts when switching modes.
+Available modes:
 
-## Audio processors
+- `background-blur` uses the current frame as the background and applies blur behind the person.
+- `virtual-background` composites the person over an image from `imagePath`.
+- `disabled` keeps the processor attached while passing frames through unchanged.
 
-Audio track processors work similarly — they intercept the local audio track and pipe it through a Web Audio API processing graph before publishing. The included `GainAudioProcessor` provides gain control and serves as a reference implementation for building custom audio processors:
+Switch modes without detaching the processor:
 
 ```ts
-import { GainAudioProcessor } from '@livekit/track-processors';
-
-const processor = new GainAudioProcessor({ gainValue: 1.5 });
-await audioTrack.setProcessor(processor);
+await processor.switchTo({ mode: 'virtual-background', imagePath: '/background.jpg' });
+await processor.switchTo({ mode: 'background-blur', blurRadius: 12 });
+await processor.switchTo({ mode: 'disabled' });
 ```
 
-See [processor-docs/audio-processors.md](processor-docs/audio-processors.md) for full usage, the `TrackProcessor` interface for audio, and a guide to building your own audio processor with the Web Audio API.
+See [processor-docs/video-processors.md](processor-docs/video-processors.md) for browser support checks, tuning options, and the sample app workflow.
 
-## Developing your own processors
+## Running The Sample App
 
-This package implements the `TrackProcessor` interface from `livekit-client`. Video and audio processors take different approaches:
+This repository includes a small [Vite](https://vitejs.dev/) example app that demonstrates the JBF background processor with a LiveKit room.
 
-- **Video processors** use `ProcessorWrapper` with a transformer pipeline — see [processor-docs/video-processors.md](processor-docs/video-processors.md#developing-your-own-video-processor)
-- **Audio processors** implement `TrackProcessor` directly using the Web Audio API — see [processor-docs/audio-processors.md](processor-docs/audio-processors.md#building-your-own-audio-processor)
-
-## Running the sample app
-
-This repository includes a small example app built on [Vite](https://vitejs.dev/) that demonstrates both video and audio processors. Run it with:
-
-```
+```sh
 # install pnpm: https://pnpm.io/installation
 pnpm install
 pnpm sample

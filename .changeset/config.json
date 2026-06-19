@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/@changesets/config@2.0.0/schema.json",
-  "changelog": ["@livekit/changesets-changelog-github", { "repo": "livekit/track-processors-js" }],
+  "changelog": false,
   "commit": true,
   "fixed": [],
   "linked": [],

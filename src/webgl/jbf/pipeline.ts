@@ -1,8 +1,5 @@
 import { buildBackgroundBlurStage } from './backgroundBlurStage';
-import {
-  buildBackgroundImageStage,
-  type JBFBlendMode,
-} from './backgroundImageStage';
+import { type JBFBlendMode, buildBackgroundImageStage } from './backgroundImageStage';
 import {
   bindPipelineStageAttributes,
   compileShader,
@@ -14,10 +11,7 @@ import { buildJointBilateralFilterStage } from './jointBilateralFilterStage';
 import { buildMaskDebugStage } from './maskDebugStage';
 import { buildMaskDilationStage } from './maskDilationStage';
 import { buildMaskFeatherStage } from './maskFeatherStage';
-import {
-  buildTemporalMaskStage,
-  type TemporalMaskMode,
-} from './temporalMaskStage';
+import { type TemporalMaskMode, buildTemporalMaskStage } from './temporalMaskStage';
 
 export type JBFBackgroundMode = 'background-blur' | 'virtual-background' | 'disabled';
 
@@ -38,12 +32,12 @@ export type JBFWebGLOptions = {
   hysteresisEnterThreshold?: number;
   hysteresisExitThreshold?: number;
   debugOutput?:
-  | 'none'
-  | 'raw-mask'
-  | 'dilated-mask'
-  | 'jbf-mask'
-  | 'temporal-mask'
-  | 'coverage-mask';
+    | 'none'
+    | 'raw-mask'
+    | 'dilated-mask'
+    | 'jbf-mask'
+    | 'temporal-mask'
+    | 'coverage-mask';
 };
 
 const DEFAULT_COVERAGE: [number, number] = [0.68, 0.83];
@@ -71,7 +65,14 @@ export const setupJBFWebGL = (
     return undefined;
   }
 
-  const vertexShaderSource = glsl`#version 300 es
+  const cleanupCallbacks: Array<() => void> = [];
+  let disposed = false;
+  const addCleanup = (cleanup: () => void) => {
+    cleanupCallbacks.push(cleanup);
+  };
+
+  try {
+    const vertexShaderSource = glsl`#version 300 es
 
     in vec2 a_position;
     in vec2 a_texCoord;
@@ -84,261 +85,286 @@ export const setupJBFWebGL = (
     }
   `;
 
-  const vertexShader = compileShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+    const vertexShader = compileShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+    addCleanup(() => gl.deleteShader(vertexShader));
 
-  const positionBuffer = gl.createBuffer()!;
-  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-  gl.bufferData(
-    gl.ARRAY_BUFFER,
-    new Float32Array([-1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0]),
-    gl.STATIC_DRAW,
-  );
-
-  const texCoordBuffer = gl.createBuffer()!;
-  gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
-  gl.bufferData(
-    gl.ARRAY_BUFFER,
-    new Float32Array([0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0]),
-    gl.STATIC_DRAW,
-  );
-
-  const inputFrameTexture = createMutableTexture(gl);
-  const segmentationTexture = createTexture(gl, gl.RGBA8, canvas.width, canvas.height);
-  const dilatedMaskTexture = createTexture(gl, gl.RGBA8, canvas.width, canvas.height);
-  const jbfMaskTexture = createTexture(gl, gl.RGBA8, canvas.width, canvas.height);
-  const personMaskTexture = createTexture(gl, gl.RGBA8, canvas.width, canvas.height);
-  const featheredMaskTexture = createTexture(gl, gl.RGBA8, canvas.width, canvas.height);
-
-  const maskBridge = buildMaskBridgeStage(
-    gl,
-    vertexShader,
-    positionBuffer,
-    texCoordBuffer,
-    segmentationTexture,
-    canvas,
-  );
-  const passthroughStage = buildPassthroughStage(
-    gl,
-    positionBuffer,
-    texCoordBuffer,
-    canvas,
-  );
-  const maskDilationStage = buildMaskDilationStage(
-    gl,
-    vertexShader,
-    positionBuffer,
-    texCoordBuffer,
-    segmentationTexture,
-    dilatedMaskTexture,
-    canvas,
-  );
-  const jointBilateralFilterStage = buildJointBilateralFilterStage(
-    gl,
-    vertexShader,
-    positionBuffer,
-    texCoordBuffer,
-    dilatedMaskTexture,
-    jbfMaskTexture,
-    canvas,
-  );
-  const maskCopyStage = buildMaskCopyStage(
-    gl,
-    vertexShader,
-    positionBuffer,
-    texCoordBuffer,
-    dilatedMaskTexture,
-    jbfMaskTexture,
-    canvas,
-  );
-  const temporalMaskStage = buildTemporalMaskStage(
-    gl,
-    vertexShader,
-    positionBuffer,
-    texCoordBuffer,
-    jbfMaskTexture,
-    personMaskTexture,
-    canvas,
-  );
-  const maskFeatherStage = buildMaskFeatherStage(
-    gl,
-    vertexShader,
-    positionBuffer,
-    texCoordBuffer,
-    personMaskTexture,
-    featheredMaskTexture,
-    canvas,
-  );
-  const maskDebugStage = buildMaskDebugStage(
-    gl,
-    positionBuffer,
-    texCoordBuffer,
-    canvas,
-  );
-  const backgroundBlurStage = buildBackgroundBlurStage(
-    gl,
-    vertexShader,
-    positionBuffer,
-    texCoordBuffer,
-    featheredMaskTexture,
-    canvas,
-  );
-  const backgroundImageStage = buildBackgroundImageStage(
-    gl,
-    positionBuffer,
-    texCoordBuffer,
-    featheredMaskTexture,
-    null,
-    canvas,
-  );
-
-  let options: JBFWebGLOptions = { ...initialOptions };
-  let hasMask = false;
-
-  applyOptions(options);
-
-  function bindInputFrame(frame: VideoFrame) {
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, inputFrameTexture);
-    // Match the source virtual-background pipeline: mutable texImage2D is
-    // reliable for VideoFrame uploads across browsers.
-    gl.texImage2D(
-      gl.TEXTURE_2D,
-      0,
-      gl.RGBA,
-      gl.RGBA,
-      gl.UNSIGNED_BYTE,
-      frame,
+    const positionBuffer = gl.createBuffer()!;
+    addCleanup(() => gl.deleteBuffer(positionBuffer));
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array([-1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0]),
+      gl.STATIC_DRAW,
     );
-  }
 
-  function applyOptions(nextOptions: Partial<JBFWebGLOptions>) {
-    options = { ...options, ...nextOptions };
-    const coverage = options.coverage ?? DEFAULT_COVERAGE;
-    backgroundBlurStage.updateCoverage(coverage);
-    backgroundImageStage.updateCoverage(coverage);
-    backgroundImageStage.updateLightWrapping(options.lightWrapping ?? DEFAULT_LIGHT_WRAPPING);
-    backgroundImageStage.updateBlendMode(options.blendMode ?? 'screen');
-    jointBilateralFilterStage.updateSigmaSpace(options.sigmaSpace ?? 0);
-    jointBilateralFilterStage.updateSigmaColor(options.sigmaColor ?? 0);
-    maskDilationStage.updateOptions({
-      enabled: options.dilationEnabled ?? DEFAULT_DILATION_ENABLED,
-      strength: options.dilationStrength ?? DEFAULT_DILATION_STRENGTH,
-    });
-    temporalMaskStage.updateOptions({
-      mode: options.temporalMode ?? DEFAULT_TEMPORAL_MODE,
-      alpha: options.temporalAlpha ?? DEFAULT_TEMPORAL_ALPHA,
-      enterThreshold: options.hysteresisEnterThreshold ?? DEFAULT_HYSTERESIS_ENTER_THRESHOLD,
-      exitThreshold: options.hysteresisExitThreshold ?? DEFAULT_HYSTERESIS_EXIT_THRESHOLD,
-    });
-    maskFeatherStage.updateOptions({
-      enabled: options.maskFeatheringEnabled ?? DEFAULT_MASK_FEATHERING_ENABLED,
-      strength: options.maskFeatheringStrength ?? DEFAULT_MASK_FEATHERING_STRENGTH,
-    });
-  }
+    const texCoordBuffer = gl.createBuffer()!;
+    addCleanup(() => gl.deleteBuffer(texCoordBuffer));
+    gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array([0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0]),
+      gl.STATIC_DRAW,
+    );
 
-  function cleanup() {
-    maskBridge.cleanUp();
-    passthroughStage.cleanUp();
-    maskDilationStage.cleanUp();
-    jointBilateralFilterStage.cleanUp();
-    maskCopyStage.cleanUp();
-    temporalMaskStage.cleanUp();
-    maskFeatherStage.cleanUp();
-    maskDebugStage.cleanUp();
-    backgroundBlurStage.cleanUp();
-    backgroundImageStage.cleanUp();
-    gl.deleteShader(vertexShader);
-    gl.deleteBuffer(positionBuffer);
-    gl.deleteBuffer(texCoordBuffer);
-    gl.deleteTexture(inputFrameTexture);
-    gl.deleteTexture(segmentationTexture);
-    gl.deleteTexture(dilatedMaskTexture);
-    gl.deleteTexture(jbfMaskTexture);
-    gl.deleteTexture(personMaskTexture);
-    gl.deleteTexture(featheredMaskTexture);
-  }
+    const inputFrameTexture = createMutableTexture(gl);
+    addCleanup(() => gl.deleteTexture(inputFrameTexture));
+    const segmentationTexture = createTexture(gl, gl.RGBA8, canvas.width, canvas.height);
+    addCleanup(() => gl.deleteTexture(segmentationTexture));
+    const dilatedMaskTexture = createTexture(gl, gl.RGBA8, canvas.width, canvas.height);
+    addCleanup(() => gl.deleteTexture(dilatedMaskTexture));
+    const jbfMaskTexture = createTexture(gl, gl.RGBA8, canvas.width, canvas.height);
+    addCleanup(() => gl.deleteTexture(jbfMaskTexture));
+    const personMaskTexture = createTexture(gl, gl.RGBA8, canvas.width, canvas.height);
+    addCleanup(() => gl.deleteTexture(personMaskTexture));
+    const featheredMaskTexture = createTexture(gl, gl.RGBA8, canvas.width, canvas.height);
+    addCleanup(() => gl.deleteTexture(featheredMaskTexture));
 
-  return {
-    renderFrame(frame: VideoFrame) {
-      bindInputFrame(frame);
+    const maskBridge = buildMaskBridgeStage(
+      gl,
+      vertexShader,
+      positionBuffer,
+      texCoordBuffer,
+      segmentationTexture,
+      canvas,
+    );
+    addCleanup(maskBridge.cleanUp);
+    const passthroughStage = buildPassthroughStage(gl, positionBuffer, texCoordBuffer, canvas);
+    addCleanup(passthroughStage.cleanUp);
+    const maskDilationStage = buildMaskDilationStage(
+      gl,
+      vertexShader,
+      positionBuffer,
+      texCoordBuffer,
+      segmentationTexture,
+      dilatedMaskTexture,
+      canvas,
+    );
+    addCleanup(maskDilationStage.cleanUp);
+    const jointBilateralFilterStage = buildJointBilateralFilterStage(
+      gl,
+      vertexShader,
+      positionBuffer,
+      texCoordBuffer,
+      dilatedMaskTexture,
+      jbfMaskTexture,
+      canvas,
+    );
+    addCleanup(jointBilateralFilterStage.cleanUp);
+    const maskCopyStage = buildMaskCopyStage(
+      gl,
+      vertexShader,
+      positionBuffer,
+      texCoordBuffer,
+      dilatedMaskTexture,
+      jbfMaskTexture,
+      canvas,
+    );
+    addCleanup(maskCopyStage.cleanUp);
+    const temporalMaskStage = buildTemporalMaskStage(
+      gl,
+      vertexShader,
+      positionBuffer,
+      texCoordBuffer,
+      jbfMaskTexture,
+      personMaskTexture,
+      canvas,
+    );
+    addCleanup(temporalMaskStage.cleanUp);
+    const maskFeatherStage = buildMaskFeatherStage(
+      gl,
+      vertexShader,
+      positionBuffer,
+      texCoordBuffer,
+      personMaskTexture,
+      featheredMaskTexture,
+      canvas,
+    );
+    addCleanup(maskFeatherStage.cleanUp);
+    const maskDebugStage = buildMaskDebugStage(gl, positionBuffer, texCoordBuffer, canvas);
+    addCleanup(maskDebugStage.cleanUp);
+    const backgroundBlurStage = buildBackgroundBlurStage(
+      gl,
+      vertexShader,
+      positionBuffer,
+      texCoordBuffer,
+      featheredMaskTexture,
+      canvas,
+    );
+    addCleanup(backgroundBlurStage.cleanUp);
+    const backgroundImageStage = buildBackgroundImageStage(
+      gl,
+      positionBuffer,
+      texCoordBuffer,
+      featheredMaskTexture,
+      null,
+      canvas,
+    );
+    addCleanup(backgroundImageStage.cleanUp);
+
+    let options: JBFWebGLOptions = { ...initialOptions };
+    let hasMask = false;
+
+    applyOptions(options);
+
+    function bindInputFrame(frame: VideoFrame) {
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, inputFrameTexture);
+      // Match the source virtual-background pipeline: mutable texImage2D is
+      // reliable for VideoFrame uploads across browsers.
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, frame);
+    }
 
-      if (!hasMask || options.mode === 'disabled') {
-        passthroughStage.render();
+    function applyOptions(nextOptions: Partial<JBFWebGLOptions>) {
+      if (disposed) {
         return;
       }
 
-      if (options.debugOutput === 'raw-mask') {
-        maskDebugStage.render(segmentationTexture);
+      options = { ...options, ...nextOptions };
+      const coverage = options.coverage ?? DEFAULT_COVERAGE;
+      backgroundBlurStage.updateCoverage(coverage);
+      backgroundImageStage.updateCoverage(coverage);
+      backgroundImageStage.updateLightWrapping(options.lightWrapping ?? DEFAULT_LIGHT_WRAPPING);
+      backgroundImageStage.updateBlendMode(options.blendMode ?? 'screen');
+      jointBilateralFilterStage.updateSigmaSpace(options.sigmaSpace ?? 0);
+      jointBilateralFilterStage.updateSigmaColor(options.sigmaColor ?? 0);
+      maskDilationStage.updateOptions({
+        enabled: options.dilationEnabled ?? DEFAULT_DILATION_ENABLED,
+        strength: options.dilationStrength ?? DEFAULT_DILATION_STRENGTH,
+      });
+      temporalMaskStage.updateOptions({
+        mode: options.temporalMode ?? DEFAULT_TEMPORAL_MODE,
+        alpha: options.temporalAlpha ?? DEFAULT_TEMPORAL_ALPHA,
+        enterThreshold: options.hysteresisEnterThreshold ?? DEFAULT_HYSTERESIS_ENTER_THRESHOLD,
+        exitThreshold: options.hysteresisExitThreshold ?? DEFAULT_HYSTERESIS_EXIT_THRESHOLD,
+      });
+      maskFeatherStage.updateOptions({
+        enabled: options.maskFeatheringEnabled ?? DEFAULT_MASK_FEATHERING_ENABLED,
+        strength: options.maskFeatheringStrength ?? DEFAULT_MASK_FEATHERING_STRENGTH,
+      });
+    }
+
+    function cleanup() {
+      if (disposed) {
         return;
       }
 
-      maskDilationStage.render();
-      if (options.debugOutput === 'dilated-mask') {
-        maskDebugStage.render(dilatedMaskTexture);
-        return;
-      }
+      disposed = true;
+      runCleanupCallbacks(cleanupCallbacks);
+    }
 
-      if (options.jointBilateralFilterEnabled ?? DEFAULT_JOINT_BILATERAL_FILTER_ENABLED) {
-        jointBilateralFilterStage.render();
-      } else {
-        maskCopyStage.render();
-      }
-      if (options.debugOutput === 'jbf-mask') {
-        maskDebugStage.render(jbfMaskTexture);
-        return;
-      }
+    return {
+      renderFrame(frame: VideoFrame) {
+        if (disposed) {
+          return;
+        }
 
-      temporalMaskStage.render();
-      if (options.debugOutput === 'temporal-mask') {
-        maskDebugStage.render(personMaskTexture);
-        return;
-      }
-      maskFeatherStage.render();
-      if (options.debugOutput === 'coverage-mask') {
-        maskDebugStage.render(featheredMaskTexture, options.coverage ?? DEFAULT_COVERAGE);
-        return;
-      }
+        bindInputFrame(frame);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, inputFrameTexture);
 
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, inputFrameTexture);
+        if (!hasMask || options.mode === 'disabled') {
+          passthroughStage.render();
+          return;
+        }
 
-      if (options.mode === 'virtual-background') {
-        backgroundImageStage.render();
-      } else {
-        backgroundBlurStage.render();
-      }
-    },
-    updateMask(mask: WebGLTexture) {
-      maskBridge.render(mask);
-      hasMask = true;
-    },
-    updateOptions(nextOptions: Partial<JBFWebGLOptions>) {
-      applyOptions(nextOptions);
-    },
-    setBackgroundImage(image: HTMLImageElement | null) {
-      if (image) {
-        backgroundImageStage.updateBackgroundImage(image);
-        applyOptions({ mode: 'virtual-background' });
-      } else if (options.mode === 'virtual-background') {
-        applyOptions({ mode: 'disabled' });
-      }
-    },
-    setBlurRadius(_radius: number | null) {
-      applyOptions({ mode: _radius ? 'background-blur' : 'disabled' });
-    },
-    setBackgroundDisabled(disabled: boolean) {
-      if (disabled) {
-        applyOptions({ mode: 'disabled' });
-      }
-    },
-    cleanup,
-    isContextLost() {
-      return gl.isContextLost();
-    },
-  };
+        if (options.debugOutput === 'raw-mask') {
+          maskDebugStage.render(segmentationTexture);
+          return;
+        }
+
+        maskDilationStage.render();
+        if (options.debugOutput === 'dilated-mask') {
+          maskDebugStage.render(dilatedMaskTexture);
+          return;
+        }
+
+        if (options.jointBilateralFilterEnabled ?? DEFAULT_JOINT_BILATERAL_FILTER_ENABLED) {
+          jointBilateralFilterStage.render();
+        } else {
+          maskCopyStage.render();
+        }
+        if (options.debugOutput === 'jbf-mask') {
+          maskDebugStage.render(jbfMaskTexture);
+          return;
+        }
+
+        temporalMaskStage.render();
+        if (options.debugOutput === 'temporal-mask') {
+          maskDebugStage.render(personMaskTexture);
+          return;
+        }
+        maskFeatherStage.render();
+        if (options.debugOutput === 'coverage-mask') {
+          maskDebugStage.render(featheredMaskTexture, options.coverage ?? DEFAULT_COVERAGE);
+          return;
+        }
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, inputFrameTexture);
+
+        if (options.mode === 'virtual-background') {
+          backgroundImageStage.render();
+        } else {
+          backgroundBlurStage.render();
+        }
+      },
+      updateMask(mask: WebGLTexture) {
+        if (disposed) {
+          return;
+        }
+
+        maskBridge.render(mask);
+        hasMask = true;
+      },
+      updateOptions(nextOptions: Partial<JBFWebGLOptions>) {
+        applyOptions(nextOptions);
+      },
+      setBackgroundImage(image: HTMLImageElement | null) {
+        if (disposed) {
+          return;
+        }
+
+        if (image) {
+          backgroundImageStage.updateBackgroundImage(image);
+          applyOptions({ mode: 'virtual-background' });
+        } else if (options.mode === 'virtual-background') {
+          applyOptions({ mode: 'disabled' });
+        }
+      },
+      setBlurRadius(_radius: number | null) {
+        applyOptions({ mode: _radius ? 'background-blur' : 'disabled' });
+      },
+      setBackgroundDisabled(disabled: boolean) {
+        if (disposed) {
+          return;
+        }
+
+        if (disabled) {
+          applyOptions({ mode: 'disabled' });
+        }
+      },
+      cleanup,
+      isContextLost() {
+        return disposed || gl.isContextLost();
+      },
+    };
+  } catch (error) {
+    disposed = true;
+    runCleanupCallbacks(cleanupCallbacks);
+    throw error;
+  }
 };
+
+function runCleanupCallbacks(cleanupCallbacks: Array<() => void>) {
+  const callbacks = cleanupCallbacks.splice(0).reverse();
+  for (const cleanup of callbacks) {
+    try {
+      cleanup();
+    } catch {
+      // Continue releasing remaining WebGL resources.
+    }
+  }
+}
 
 function createMutableTexture(gl: WebGL2RenderingContext) {
   const texture = gl.createTexture();
@@ -378,11 +404,7 @@ function buildMaskCopyStage(
     }
   `;
 
-  const fragmentShader = compileShader(
-    gl,
-    gl.FRAGMENT_SHADER,
-    fragmentShaderSource,
-  );
+  const fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
   const program = createPiplelineStageProgram(
     gl,
     vertexShader,
@@ -393,13 +415,7 @@ function buildMaskCopyStage(
   const maskLocation = gl.getUniformLocation(program, 'u_mask');
   const frameBuffer = gl.createFramebuffer();
   gl.bindFramebuffer(gl.FRAMEBUFFER, frameBuffer);
-  gl.framebufferTexture2D(
-    gl.FRAMEBUFFER,
-    gl.COLOR_ATTACHMENT0,
-    gl.TEXTURE_2D,
-    outputTexture,
-    0,
-  );
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, outputTexture, 0);
   gl.useProgram(program);
   gl.uniform1i(maskLocation, 1);
 
@@ -447,11 +463,7 @@ function buildMaskBridgeStage(
     }
   `;
 
-  const fragmentShader = compileShader(
-    gl,
-    gl.FRAGMENT_SHADER,
-    fragmentShaderSource,
-  );
+  const fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
   const program = createPiplelineStageProgram(
     gl,
     vertexShader,
@@ -462,13 +474,7 @@ function buildMaskBridgeStage(
   const maskLocation = gl.getUniformLocation(program, 'u_mediapipeMask');
   const frameBuffer = gl.createFramebuffer();
   gl.bindFramebuffer(gl.FRAMEBUFFER, frameBuffer);
-  gl.framebufferTexture2D(
-    gl.FRAMEBUFFER,
-    gl.COLOR_ATTACHMENT0,
-    gl.TEXTURE_2D,
-    outputTexture,
-    0,
-  );
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, outputTexture, 0);
   gl.useProgram(program);
   gl.uniform1i(maskLocation, 0);
 
@@ -528,11 +534,7 @@ function buildPassthroughStage(
   `;
 
   const vertexShader = compileShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
-  const fragmentShader = compileShader(
-    gl,
-    gl.FRAGMENT_SHADER,
-    fragmentShaderSource,
-  );
+  const fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
   const program = createPiplelineStageProgram(
     gl,
     vertexShader,

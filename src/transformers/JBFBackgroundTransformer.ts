@@ -1,8 +1,7 @@
 import * as vision from '@mediapipe/tasks-vision';
 import { dependencies } from '../../package.json';
-import { getLogger, LoggerNames } from '../logger';
+import { LoggerNames, getLogger } from '../logger';
 import { setupJBFWebGL } from '../webgl/jbf/pipeline';
-import VideoTransformer from './VideoTransformer';
 import {
   DEFAULT_JBF_COVERAGE,
   DEFAULT_JBF_DEBUG_OUTPUT,
@@ -20,6 +19,7 @@ import {
   type JBFBackgroundMode,
   type JBFBackgroundTransformerOptions,
 } from './JBFBackgroundOptions';
+import VideoTransformer from './VideoTransformer';
 import { TrackTransformerDestroyOptions, VideoTransformerInitOptions } from './types';
 
 const DEFAULT_SEGMENTER_MODEL =
@@ -68,35 +68,42 @@ export default class JBFBackgroundTransformer extends VideoTransformer<JBFBackgr
 
   async init({ outputCanvas, inputElement: inputVideo }: VideoTransformerInitOptions) {
     await super.init({ outputCanvas, inputElement: inputVideo });
-    this.gl?.cleanup();
-    this.gl = undefined;
-    this.recreateRenderer();
+    try {
+      this.recreateRenderer();
 
-    const fileSet = await vision.FilesetResolver.forVisionTasks(
-      this.options.assetPaths?.tasksVisionFileSet ??
-      `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${dependencies['@mediapipe/tasks-vision']}/wasm`,
-    );
-
-    this.imageSegmenter = await vision.ImageSegmenter.createFromOptions(fileSet, {
-      baseOptions: {
-        modelAssetPath: this.options.assetPaths?.modelAssetPath ?? DEFAULT_SEGMENTER_MODEL,
-        delegate: 'GPU',
-        ...this.options.segmenterOptions,
-      },
-      canvas: this.canvas,
-      runningMode: 'VIDEO',
-      outputCategoryMask: false,
-      outputConfidenceMasks: true,
-    });
-
-    if (this.options.imagePath) {
-      await this.loadAndSetBackground(this.options.imagePath).catch((err) =>
-        this.log.error('Error while loading processor background image: ', err),
+      const fileSet = await vision.FilesetResolver.forVisionTasks(
+        this.options.assetPaths?.tasksVisionFileSet ??
+          `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${dependencies['@mediapipe/tasks-vision']}/wasm`,
       );
-    }
 
-    if (typeof this.options.blurRadius === 'number') {
-      this.renderer?.setBlurRadius(this.options.blurRadius);
+      this.imageSegmenter = await vision.ImageSegmenter.createFromOptions(fileSet, {
+        baseOptions: {
+          modelAssetPath: this.options.assetPaths?.modelAssetPath ?? DEFAULT_SEGMENTER_MODEL,
+          delegate: 'GPU',
+          ...this.options.segmenterOptions,
+        },
+        canvas: this.canvas,
+        runningMode: 'VIDEO',
+        outputCategoryMask: false,
+        outputConfidenceMasks: true,
+      });
+
+      if (this.options.imagePath) {
+        await this.loadAndSetBackground(this.options.imagePath).catch((err) =>
+          this.log.error('Error while loading processor background image: ', err),
+        );
+      }
+
+      if (typeof this.options.blurRadius === 'number') {
+        this.renderer?.setBlurRadius(this.options.blurRadius);
+      }
+    } catch (error) {
+      this.renderer?.cleanup();
+      this.renderer = undefined;
+      await this.imageSegmenter?.close();
+      this.imageSegmenter = undefined;
+      await super.destroy();
+      throw error;
     }
   }
 
@@ -105,11 +112,21 @@ export default class JBFBackgroundTransformer extends VideoTransformer<JBFBackgr
     this.renderer = undefined;
     await super.destroy();
     await this.imageSegmenter?.close();
+    this.imageSegmenter = undefined;
     this.backgroundImageAndPath = null;
 
     if (!options?.willProcessorRestart) {
       this.isFirstFrame = true;
     }
+  }
+
+  async restart(options: VideoTransformerInitOptions) {
+    this.renderer?.cleanup();
+    this.renderer = undefined;
+    await this.imageSegmenter?.close();
+    this.imageSegmenter = undefined;
+    await super.destroy();
+    await this.init(options);
   }
 
   async loadAndSetBackground(path: string) {
@@ -118,8 +135,16 @@ export default class JBFBackgroundTransformer extends VideoTransformer<JBFBackgr
 
       await new Promise((resolve, reject) => {
         img.crossOrigin = 'Anonymous';
-        img.onload = () => resolve(img);
-        img.onerror = (err) => reject(err);
+        img.onload = () => {
+          img.onload = null;
+          img.onerror = null;
+          resolve(img);
+        };
+        img.onerror = (err) => {
+          img.onload = null;
+          img.onerror = null;
+          reject(err);
+        };
         img.src = path;
       });
 
@@ -138,7 +163,10 @@ export default class JBFBackgroundTransformer extends VideoTransformer<JBFBackgr
       }
 
       let skipProcessingFrame = this.isDisabled ?? this.options.backgroundDisabled ?? false;
-      if (typeof this.options.blurRadius !== 'number' && typeof this.options.imagePath !== 'string') {
+      if (
+        typeof this.options.blurRadius !== 'number' &&
+        typeof this.options.imagePath !== 'string'
+      ) {
         skipProcessingFrame = true;
       }
 
@@ -176,13 +204,23 @@ export default class JBFBackgroundTransformer extends VideoTransformer<JBFBackgr
       this.isFirstFrame = false;
 
       const filterStartTimeMs = performance.now();
+      const rendererForFrame = this.renderer;
 
       const segmentationPromise = new Promise<void>((resolve, reject) => {
         try {
+          const imageSegmenter = this.imageSegmenter;
+          if (!imageSegmenter) {
+            resolve();
+            return;
+          }
+
           const segmentationStartTimeMs = performance.now();
-          this.imageSegmenter?.segmentForVideo(frame, segmentationStartTimeMs, (result) => {
+          imageSegmenter.segmentForVideo(frame, segmentationStartTimeMs, (result) => {
             this.segmentationTimeMs = performance.now() - segmentationStartTimeMs;
-            this.updateMask(result.confidenceMasks?.[0]);
+            const mask = result.confidenceMasks?.[0];
+            if (rendererForFrame === this.renderer && mask) {
+              rendererForFrame?.updateMask(mask.getAsWebGLTexture());
+            }
             result.close();
             resolve();
           });
@@ -228,8 +266,7 @@ export default class JBFBackgroundTransformer extends VideoTransformer<JBFBackgr
       sigmaSpace: this.options.sigmaSpace ?? DEFAULT_JBF_SIGMA_SPACE,
       sigmaColor: this.options.sigmaColor ?? DEFAULT_JBF_SIGMA_COLOR,
       jointBilateralFilterEnabled:
-        this.options.jointBilateralFilterEnabled ??
-        DEFAULT_JBF_JOINT_BILATERAL_FILTER_ENABLED,
+        this.options.jointBilateralFilterEnabled ?? DEFAULT_JBF_JOINT_BILATERAL_FILTER_ENABLED,
       dilationEnabled: this.options.dilationEnabled ?? DEFAULT_JBF_DILATION_ENABLED,
       dilationStrength: this.options.dilationStrength ?? DEFAULT_JBF_DILATION_STRENGTH,
       temporalMode: this.options.temporalMode ?? DEFAULT_JBF_TEMPORAL_MODE,
@@ -248,6 +285,7 @@ export default class JBFBackgroundTransformer extends VideoTransformer<JBFBackgr
     if (opts.imagePath) {
       await this.loadAndSetBackground(opts.imagePath);
     } else if ('imagePath' in opts) {
+      this.backgroundImageAndPath = null;
       this.renderer?.setBackgroundImage(null);
     }
 
@@ -260,11 +298,6 @@ export default class JBFBackgroundTransformer extends VideoTransformer<JBFBackgr
 
   private drawFrame(frame: VideoFrame) {
     this.renderer?.renderFrame(frame);
-  }
-
-  private updateMask(mask: vision.MPMask | undefined) {
-    if (!mask) return;
-    this.renderer?.updateMask(mask.getAsWebGLTexture());
   }
 
   private recreateRenderer() {
@@ -281,8 +314,7 @@ export default class JBFBackgroundTransformer extends VideoTransformer<JBFBackgr
       sigmaSpace: this.options.sigmaSpace ?? DEFAULT_JBF_SIGMA_SPACE,
       sigmaColor: this.options.sigmaColor ?? DEFAULT_JBF_SIGMA_COLOR,
       jointBilateralFilterEnabled:
-        this.options.jointBilateralFilterEnabled ??
-        DEFAULT_JBF_JOINT_BILATERAL_FILTER_ENABLED,
+        this.options.jointBilateralFilterEnabled ?? DEFAULT_JBF_JOINT_BILATERAL_FILTER_ENABLED,
       dilationEnabled: this.options.dilationEnabled ?? DEFAULT_JBF_DILATION_ENABLED,
       dilationStrength: this.options.dilationStrength ?? DEFAULT_JBF_DILATION_STRENGTH,
       temporalMode: this.options.temporalMode ?? DEFAULT_JBF_TEMPORAL_MODE,

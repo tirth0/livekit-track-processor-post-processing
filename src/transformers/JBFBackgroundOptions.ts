@@ -1,5 +1,5 @@
 import type { ProcessorWrapperOptions } from '../ProcessorWrapper';
-import type { FrameProcessingStats, SegmenterOptions } from './BackgroundTransformer';
+import type { FrameProcessingStats, SegmenterOptions } from './shared';
 
 export type JBFBackgroundMode = 'background-blur' | 'virtual-background' | 'disabled';
 

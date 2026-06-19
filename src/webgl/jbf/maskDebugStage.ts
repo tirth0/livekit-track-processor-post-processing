@@ -51,46 +51,61 @@ export function buildMaskDebugStage(
     }
   `;
 
-  const vertexShader = compileShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
-  const fragmentShader = compileShader(
-    gl,
-    gl.FRAGMENT_SHADER,
-    fragmentShaderSource,
-  );
-  const program = createPiplelineStageProgram(
-    gl,
-    vertexShader,
-    fragmentShader,
-    positionBuffer,
-    texCoordBuffer,
-  );
-  const maskLocation = gl.getUniformLocation(program, 'u_mask');
-  const coverageLocation = gl.getUniformLocation(program, 'u_coverage');
-  const applyCoverageLocation = gl.getUniformLocation(program, 'u_applyCoverage');
-  gl.useProgram(program);
-  gl.uniform1i(maskLocation, 0);
-  gl.uniform2f(coverageLocation, 0.68, 0.83);
-  gl.uniform1i(applyCoverageLocation, 0);
+  const cleanupCallbacks: Array<() => void> = [];
 
-  function render(maskTexture: WebGLTexture, coverage?: [number, number]) {
-    gl.viewport(0, 0, canvas.width, canvas.height);
+  try {
+    const vertexShader = compileShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+    cleanupCallbacks.push(() => gl.deleteShader(vertexShader));
+    const fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
+    cleanupCallbacks.push(() => gl.deleteShader(fragmentShader));
+    const program = createPiplelineStageProgram(
+      gl,
+      vertexShader,
+      fragmentShader,
+      positionBuffer,
+      texCoordBuffer,
+    );
+    cleanupCallbacks.push(() => gl.deleteProgram(program));
+    const maskLocation = gl.getUniformLocation(program, 'u_mask');
+    const coverageLocation = gl.getUniformLocation(program, 'u_coverage');
+    const applyCoverageLocation = gl.getUniformLocation(program, 'u_applyCoverage');
     gl.useProgram(program);
-    bindPipelineStageAttributes(gl, program, positionBuffer, texCoordBuffer);
-    gl.uniform1i(applyCoverageLocation, coverage ? 1 : 0);
-    if (coverage) {
-      gl.uniform2f(coverageLocation, coverage[0], coverage[1]);
+    gl.uniform1i(maskLocation, 0);
+    gl.uniform2f(coverageLocation, 0.68, 0.83);
+    gl.uniform1i(applyCoverageLocation, 0);
+
+    function render(maskTexture: WebGLTexture, coverage?: [number, number]) {
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.useProgram(program);
+      bindPipelineStageAttributes(gl, program, positionBuffer, texCoordBuffer);
+      gl.uniform1i(applyCoverageLocation, coverage ? 1 : 0);
+      if (coverage) {
+        gl.uniform2f(coverageLocation, coverage[0], coverage[1]);
+      }
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, maskTexture);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, maskTexture);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-  }
 
-  function cleanUp() {
-    gl.deleteProgram(program);
-    gl.deleteShader(fragmentShader);
-    gl.deleteShader(vertexShader);
-  }
+    function cleanUp() {
+      runCleanupCallbacks(cleanupCallbacks);
+    }
 
-  return { render, cleanUp };
+    return { render, cleanUp };
+  } catch (error) {
+    runCleanupCallbacks(cleanupCallbacks);
+    throw error;
+  }
+}
+
+function runCleanupCallbacks(cleanupCallbacks: Array<() => void>) {
+  const callbacks = cleanupCallbacks.splice(0).reverse();
+  for (const cleanup of callbacks) {
+    try {
+      cleanup();
+    } catch {
+      // Continue releasing remaining WebGL resources.
+    }
+  }
 }
