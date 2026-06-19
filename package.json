@@ -1,16 +1,16 @@
 {
-  "name": "@livekit/track-processors",
-  "version": "0.7.2",
-  "description": "LiveKit track processors",
+  "name": "@tirth0/livekit-track-processor-jbf",
+  "version": "0.2.0",
+  "description": "Joint bilateral filter background processor for LiveKit video tracks",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "source": "src/index.ts",
   "types": "dist/src/index.d.ts",
   "repository": {
     "type": "git",
-    "url": "https://github.com/livekit/track-processors-js.git"
+    "url": "https://github.com/tirth0/livekit-track-processor-jbf.git"
   },
-  "author": "Lukas Seiler",
+  "author": "Tirthoraj Sengupta",
   "license": "Apache-2.0",
   "scripts": {
     "build": "tsup --onSuccess \"tsc --declaration --emitDeclarationOnly\"",
@@ -34,7 +34,6 @@
   },
   "devDependencies": {
     "@changesets/cli": "^2.26.2",
-    "@livekit/changesets-changelog-github": "^0.0.4",
     "@trivago/prettier-plugin-sort-imports": "^4.2.1",
     "@types/offscreencanvas": "^2019.7.3",
     "@typescript-eslint/eslint-plugin": "^5.62.0",
