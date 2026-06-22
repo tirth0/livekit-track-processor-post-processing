@@ -9,8 +9,13 @@ import {
 export type BackgroundBlurStage = {
   render(): void;
   updateCoverage(coverage: [number, number]): void;
+  updateBlurRadius(radius: number): void;
   cleanUp(): void;
 };
+
+const DEFAULT_BLUR_RADIUS = 10;
+const MAX_BLUR_RADIUS = 30;
+const MAX_BLUR_PASSES = 6;
 
 export function buildBackgroundBlurStage(
   gl: WebGL2RenderingContext,
@@ -44,6 +49,10 @@ export function buildBackgroundBlurStage(
       blendPass.updateCoverage(coverage);
     }
 
+    function updateBlurRadius(radius: number) {
+      blurPass.updateBlurRadius(radius);
+    }
+
     function cleanUp() {
       runCleanupCallbacks(cleanupCallbacks);
     }
@@ -51,6 +60,7 @@ export function buildBackgroundBlurStage(
     return {
       render,
       updateCoverage,
+      updateBlurRadius,
       cleanUp,
     };
   } catch (error) {
@@ -110,6 +120,8 @@ function buildBlurPass(
   const texelWidth = 1 / outputWidth;
   const texelHeight = 1 / outputHeight;
   const cleanupCallbacks: Array<() => void> = [];
+  let blurPassCount = 3;
+  let blurTexelScale = 1;
 
   try {
     const fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource);
@@ -143,6 +155,20 @@ function buildBlurPass(
     gl.useProgram(program);
     gl.uniform1i(personMaskLocation, 1);
 
+    function updateBlurRadius(radius: number) {
+      const normalizedRadius = Number.isFinite(radius) ? radius : 0;
+      const clampedRadius = Math.min(Math.max(normalizedRadius, 0), MAX_BLUR_RADIUS);
+      if (clampedRadius === 0) {
+        blurPassCount = 0;
+        blurTexelScale = 0;
+        return;
+      }
+
+      const radiusRatio = clampedRadius / DEFAULT_BLUR_RADIUS;
+      blurPassCount = Math.max(1, Math.min(MAX_BLUR_PASSES, Math.round(radiusRatio * 3)));
+      blurTexelScale = Math.max(0.25, Math.min(2, radiusRatio));
+    }
+
     function render() {
       gl.viewport(0, 0, outputWidth, outputHeight);
       gl.useProgram(program);
@@ -151,8 +177,8 @@ function buildBlurPass(
       gl.activeTexture(gl.TEXTURE1);
       gl.bindTexture(gl.TEXTURE_2D, personMaskTexture);
 
-      for (let i = 0; i < 3; i++) {
-        gl.uniform2f(texelSizeLocation, 0, texelHeight);
+      for (let i = 0; i < blurPassCount; i++) {
+        gl.uniform2f(texelSizeLocation, 0, texelHeight * blurTexelScale);
         gl.bindFramebuffer(gl.FRAMEBUFFER, frameBuffer1);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
@@ -160,7 +186,7 @@ function buildBlurPass(
         gl.bindTexture(gl.TEXTURE_2D, texture1);
         gl.uniform1i(inputFrameLocation, 2);
 
-        gl.uniform2f(texelSizeLocation, texelWidth, 0);
+        gl.uniform2f(texelSizeLocation, texelWidth * blurTexelScale, 0);
         gl.bindFramebuffer(gl.FRAMEBUFFER, frameBuffer2);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
@@ -174,6 +200,7 @@ function buildBlurPass(
 
     return {
       render,
+      updateBlurRadius,
       cleanUp,
     };
   } catch (error) {
