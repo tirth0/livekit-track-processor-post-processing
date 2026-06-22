@@ -1,6 +1,6 @@
 {
   "name": "@tirth0/livekit-track-processor-jbf",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Joint bilateral filter background processor for LiveKit video tracks",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
