@@ -23,6 +23,7 @@ export type JBFBackgroundMode = 'background-blur' | 'virtual-background' | 'disa
 
 export type JBFWebGLOptions = {
   mode: JBFBackgroundMode;
+  blurRadius?: number;
   coverage?: [number, number];
   lightWrapping?: number;
   blendMode?: JBFBlendMode;
@@ -47,6 +48,7 @@ export type JBFWebGLOptions = {
 };
 
 const DEFAULT_COVERAGE: [number, number] = [0.68, 0.83];
+const DEFAULT_BLUR_RADIUS = 10;
 const DEFAULT_LIGHT_WRAPPING = 0.3;
 const DEFAULT_JOINT_BILATERAL_FILTER_ENABLED = true;
 const DEFAULT_DILATION_ENABLED = false;
@@ -214,6 +216,7 @@ export const setupJBFWebGL = (
   function applyOptions(nextOptions: Partial<JBFWebGLOptions>) {
     options = { ...options, ...nextOptions };
     const coverage = options.coverage ?? DEFAULT_COVERAGE;
+    backgroundBlurStage.updateBlurRadius(options.blurRadius ?? DEFAULT_BLUR_RADIUS);
     backgroundBlurStage.updateCoverage(coverage);
     backgroundImageStage.updateCoverage(coverage);
     backgroundImageStage.updateLightWrapping(options.lightWrapping ?? DEFAULT_LIGHT_WRAPPING);
@@ -325,8 +328,12 @@ export const setupJBFWebGL = (
         applyOptions({ mode: 'disabled' });
       }
     },
-    setBlurRadius(_radius: number | null) {
-      applyOptions({ mode: _radius ? 'background-blur' : 'disabled' });
+    setBlurRadius(radius: number | null) {
+      const blurRadius = typeof radius === 'number' && Number.isFinite(radius) ? radius : 0;
+      applyOptions({
+        blurRadius,
+        mode: blurRadius > 0 ? 'background-blur' : 'disabled',
+      });
     },
     setBackgroundDisabled(disabled: boolean) {
       if (disabled) {

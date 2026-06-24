@@ -4,6 +4,7 @@ import { getLogger, LoggerNames } from '../logger';
 import { setupJBFWebGL } from '../webgl/jbf/pipeline';
 import VideoTransformer from './VideoTransformer';
 import {
+  DEFAULT_JBF_BLUR_RADIUS,
   DEFAULT_JBF_COVERAGE,
   DEFAULT_JBF_DEBUG_OUTPUT,
   DEFAULT_JBF_DILATION_ENABLED,
@@ -25,6 +26,9 @@ import { TrackTransformerDestroyOptions, VideoTransformerInitOptions } from './t
 const DEFAULT_SEGMENTER_MODEL =
   'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite';
 
+const hasPositiveBlurRadius = (blurRadius: number | undefined) =>
+  typeof blurRadius === 'number' && Number.isFinite(blurRadius) && blurRadius > 0;
+
 const resolveMode = (options: JBFBackgroundTransformerOptions): JBFBackgroundMode => {
   if (options.backgroundDisabled) {
     return 'disabled';
@@ -34,7 +38,7 @@ const resolveMode = (options: JBFBackgroundTransformerOptions): JBFBackgroundMod
     return 'virtual-background';
   }
 
-  return 'background-blur';
+  return hasPositiveBlurRadius(options.blurRadius) ? 'background-blur' : 'disabled';
 };
 
 export default class JBFBackgroundTransformer extends VideoTransformer<JBFBackgroundTransformerOptions> {
@@ -222,6 +226,7 @@ export default class JBFBackgroundTransformer extends VideoTransformer<JBFBackgr
 
     this.renderer?.updateOptions({
       mode: resolveMode(this.options),
+      blurRadius: this.options.blurRadius ?? DEFAULT_JBF_BLUR_RADIUS,
       coverage: this.options.coverage ?? DEFAULT_JBF_COVERAGE,
       lightWrapping: this.options.lightWrapping,
       blendMode: this.options.blendMode,
@@ -275,6 +280,7 @@ export default class JBFBackgroundTransformer extends VideoTransformer<JBFBackgr
     this.renderer?.cleanup();
     this.renderer = setupJBFWebGL(this.canvas, {
       mode: resolveMode(this.options),
+      blurRadius: this.options.blurRadius ?? DEFAULT_JBF_BLUR_RADIUS,
       coverage: this.options.coverage ?? DEFAULT_JBF_COVERAGE,
       lightWrapping: this.options.lightWrapping,
       blendMode: this.options.blendMode,
